@@ -1,0 +1,21 @@
+{
+  "name": "pinta",
+  "description": "Security monitoring plugin - captures all Claude Code events and enforces server-managed access rules",
+  "version": "1.0.0",
+  "license": "MIT",
+  "hooks": "./hooks/hooks.json",
+  "userConfig": {
+    "server_url": {
+      "title": "Server URL",
+      "description": "보안 서버 URL (e.g. https://security.company.com)",
+      "type": "string",
+      "sensitive": false
+    },
+    "auth_token": {
+      "title": "Auth Token",
+      "description": "서버 인증 토큰",
+      "type": "string",
+      "sensitive": true
+    }
+  }
+}

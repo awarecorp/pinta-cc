@@ -1,0 +1,15 @@
+{
+  "name": "pinta",
+  "version": "1.0.0",
+  "description": "Claude Code security monitoring plugin",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "mock-server": "npx tsx tools/mock-server.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.plugin-data/
+env.json
+tools/.data/
+.claude/
