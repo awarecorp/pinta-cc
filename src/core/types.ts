@@ -75,7 +75,8 @@ export interface Rule {
   id: string;
   action: "block" | "allow";
   toolName: string;
-  condition?: string;
+  pattern?: string;
+  field?: string;
   reason: string;
 }
 

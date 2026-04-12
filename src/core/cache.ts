@@ -32,11 +32,14 @@ export class RuleCacheManager {
     this.save();
   }
 
-  matchRule(toolName: string): RuleMatchResult | null {
+  matchRule(toolName: string, toolInput?: Record<string, unknown>): RuleMatchResult | null {
     for (const rule of this.cache.rules) {
-      if (this.matchesToolName(rule.toolName, toolName)) {
-        return { action: rule.action, reason: rule.reason };
+      if (!this.matchesToolName(rule.toolName, toolName)) continue;
+      if (rule.pattern) {
+        const value = this.extractFieldValue(toolName, toolInput, rule.field);
+        if (!value || !this.matchesPattern(rule.pattern, value)) continue;
       }
+      return { action: rule.action, reason: rule.reason };
     }
     return null;
   }
@@ -47,9 +50,41 @@ export class RuleCacheManager {
     return elapsed > CACHE_TTL_MS;
   }
 
-  private matchesToolName(pattern: string, toolName: string): boolean {
-    if (pattern === "*") return true;
-    return pattern === toolName;
+  private static DEFAULT_FIELDS: Record<string, string> = {
+    Bash: "command",
+    Read: "file_path",
+    Write: "file_path",
+    Edit: "file_path",
+    Glob: "pattern",
+    Grep: "pattern",
+    WebFetch: "url",
+    WebSearch: "query",
+    Agent: "prompt",
+  };
+
+  private matchesToolName(ruleToolName: string, toolName: string): boolean {
+    if (ruleToolName === "*") return true;
+    return ruleToolName === toolName;
+  }
+
+  private extractFieldValue(
+    toolName: string,
+    toolInput?: Record<string, unknown>,
+    fieldOverride?: string,
+  ): string | null {
+    if (!toolInput) return null;
+    const field = fieldOverride ?? RuleCacheManager.DEFAULT_FIELDS[toolName];
+    if (!field) return null;
+    const value = toolInput[field];
+    return typeof value === "string" ? value : null;
+  }
+
+  private matchesPattern(pattern: string, value: string): boolean {
+    try {
+      return new RegExp(pattern, "i").test(value);
+    } catch {
+      return false;
+    }
   }
 
   private load(): RuleCache {

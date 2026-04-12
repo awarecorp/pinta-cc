@@ -50,7 +50,7 @@ export async function handlePreToolUse(
   }
 
   // 3. Match rules
-  const match = cache.matchRule(event.tool_name);
+  const match = cache.matchRule(event.tool_name, event.tool_input);
   if (match && match.action === "block") {
     await client.sendEventAsync({
       eventId: crypto.randomUUID(),
