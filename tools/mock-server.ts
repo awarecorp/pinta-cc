@@ -7,32 +7,32 @@ const AUTH_TOKEN = "test-token";
 const DATA_DIR = path.join(__dirname, ".data");
 const EVENTS_FILE = path.join(DATA_DIR, "events.json");
 
-// 차단 룰 설정 (테스트용으로 수정 가능)
+// Blocking rules (editable for testing)
 const rules: Array<{ id: string; action: string; toolName: string; pattern?: string; field?: string; reason: string }> = [
-  // --- 위험한 시스템 명령어 차단 ---
-  { id: "r-rm-rf", action: "block", toolName: "Bash", pattern: "rm\\s+-rf\\s+/", reason: "루트 경로 대상 rm -rf 차단" },
-  { id: "r-shutdown", action: "block", toolName: "Bash", pattern: "(shutdown|reboot|halt|init\\s+[06])", reason: "시스템 종료/재부팅 명령 차단" },
-  { id: "r-mkfs", action: "block", toolName: "Bash", pattern: "mkfs", reason: "디스크 포맷 명령 차단" },
-  { id: "r-dd", action: "block", toolName: "Bash", pattern: "dd\\s+.*of=/dev/", reason: "디바이스 직접 쓰기 차단" },
+  // --- Dangerous system commands ---
+  { id: "r-rm-rf", action: "block", toolName: "Bash", pattern: "rm\\s+-rf\\s+/", reason: "Blocked: rm -rf targeting root path" },
+  { id: "r-shutdown", action: "block", toolName: "Bash", pattern: "(shutdown|reboot|halt|init\\s+[06])", reason: "Blocked: system shutdown/reboot command" },
+  { id: "r-mkfs", action: "block", toolName: "Bash", pattern: "mkfs", reason: "Blocked: disk format command" },
+  { id: "r-dd", action: "block", toolName: "Bash", pattern: "dd\\s+.*of=/dev/", reason: "Blocked: direct device write" },
 
-  // --- 민감 정보 유출 방지 ---
-  { id: "r-cat-secrets", action: "block", toolName: "Bash", pattern: "cat.*\\.(env|pem|key|credentials)", reason: "민감 파일 읽기 차단" },
-  { id: "r-read-secrets", action: "block", toolName: "Read", pattern: "\\.(env|pem|key|p12|credentials)$", field: "file_path", reason: "시크릿 파일 읽기 차단" },
-  { id: "r-curl-upload", action: "block", toolName: "Bash", pattern: "curl.*(-F|--data).*\\.(env|key|pem)", reason: "민감 파일 외부 전송 차단" },
+  // --- Sensitive data leak prevention ---
+  { id: "r-cat-secrets", action: "block", toolName: "Bash", pattern: "cat.*\\.(env|pem|key|credentials)", reason: "Blocked: reading sensitive file via cat" },
+  { id: "r-read-secrets", action: "block", toolName: "Read", pattern: "\\.(env|pem|key|p12|credentials)$", field: "file_path", reason: "Blocked: reading secret file" },
+  { id: "r-curl-upload", action: "block", toolName: "Bash", pattern: "curl.*(-F|--data).*\\.(env|key|pem)", reason: "Blocked: uploading sensitive file externally" },
 
-  // --- Git 위험 작업 차단 ---
-  { id: "r-force-push", action: "block", toolName: "Bash", pattern: "git\\s+push.*--force", reason: "force push 차단" },
-  { id: "r-reset-hard", action: "block", toolName: "Bash", pattern: "git\\s+reset\\s+--hard", reason: "git reset --hard 차단" },
-  { id: "r-branch-delete", action: "block", toolName: "Bash", pattern: "git\\s+branch\\s+-[dD]\\s+(main|master|develop)", reason: "주요 브랜치 삭제 차단" },
+  // --- Git dangerous operations ---
+  { id: "r-force-push", action: "block", toolName: "Bash", pattern: "git\\s+push.*--force", reason: "Blocked: force push" },
+  { id: "r-reset-hard", action: "block", toolName: "Bash", pattern: "git\\s+reset\\s+--hard", reason: "Blocked: git reset --hard" },
+  { id: "r-branch-delete", action: "block", toolName: "Bash", pattern: "git\\s+branch\\s+-[dD]\\s+(main|master|develop)", reason: "Blocked: deleting protected branch" },
 
-  // --- 네트워크/외부 접근 제한 ---
-  { id: "r-pipe-shell", action: "block", toolName: "Bash", pattern: "(curl|wget).*\\|\\s*(sh|bash)", reason: "원격 스크립트 다운로드 후 실행 차단" },
-  { id: "r-reverse-shell", action: "block", toolName: "Bash", pattern: "(nc|ncat|netcat).*-e.*(sh|bash)", reason: "리버스 쉘 차단" },
-  { id: "r-ssh-key", action: "block", toolName: "Bash", pattern: "ssh-keygen|ssh-copy-id", reason: "SSH 키 생성/배포 차단" },
+  // --- Network/external access restrictions ---
+  { id: "r-pipe-shell", action: "block", toolName: "Bash", pattern: "(curl|wget).*\\|\\s*(sh|bash)", reason: "Blocked: remote script download and execution" },
+  { id: "r-reverse-shell", action: "block", toolName: "Bash", pattern: "(nc|ncat|netcat).*-e.*(sh|bash)", reason: "Blocked: reverse shell" },
+  { id: "r-ssh-key", action: "block", toolName: "Bash", pattern: "ssh-keygen|ssh-copy-id", reason: "Blocked: SSH key generation/distribution" },
 
-  // --- 패키지/의존성 보호 ---
-  { id: "r-npm-publish", action: "block", toolName: "Bash", pattern: "npm\\s+publish", reason: "패키지 무단 배포 차단" },
-  { id: "r-pip-remote", action: "block", toolName: "Bash", pattern: "pip\\s+install\\s+https?://", reason: "외부 URL에서 직접 패키지 설치 차단" },
+  // --- Package/dependency protection ---
+  { id: "r-npm-publish", action: "block", toolName: "Bash", pattern: "npm\\s+publish", reason: "Blocked: unauthorized package publish" },
+  { id: "r-pip-remote", action: "block", toolName: "Bash", pattern: "pip\\s+install\\s+https?://", reason: "Blocked: pip install from external URL" },
 ];
 
 // --- Storage ---

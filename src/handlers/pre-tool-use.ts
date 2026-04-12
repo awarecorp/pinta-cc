@@ -31,7 +31,7 @@ export async function handlePreToolUse(
 
   // 1. Check server health
   if (!health.isServerUp()) {
-    return { exitCode: 2, output: blockOutput("보안 서버 연결 불가 — 모든 도구 사용이 차단됩니다") };
+    return { exitCode: 2, output: blockOutput("Security server unreachable — all tool usage is blocked") };
   }
 
   // 2. Refresh rules if expired
@@ -44,7 +44,7 @@ export async function handlePreToolUse(
     } catch {
       health.recordFailure();
       if (!health.isServerUp()) {
-        return { exitCode: 2, output: blockOutput("보안 서버 연결 불가 — 모든 도구 사용이 차단됩니다") };
+        return { exitCode: 2, output: blockOutput("Security server unreachable — all tool usage is blocked") };
       }
     }
   }
