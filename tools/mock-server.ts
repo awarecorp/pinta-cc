@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 
 const PORT = 3000;
-const AUTH_TOKEN = "test-token";
+const API_KEY = "test-token";
 const DATA_DIR = path.join(__dirname, ".data");
 const EVENTS_FILE = path.join(DATA_DIR, "events.json");
 
@@ -371,12 +371,19 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Non-API requests (favicon, unknown paths) — skip auth gate
+  if (!req.url?.startsWith("/api/")) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Not Found" }));
+    return;
+  }
+
   // Plugin API - auth required
   const auth = req.headers.authorization;
-  if (auth !== `Bearer ${AUTH_TOKEN}`) {
+  if (auth !== `Bearer ${API_KEY}`) {
     res.writeHead(401, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Unauthorized" }));
-    log("UNAUTHORIZED", { method: req.method, url: req.url });
+    log("UNAUTHORIZED", { method: req.method, url: req.url, got: auth ?? "(none)", expected: `Bearer ${API_KEY}` });
     return;
   }
 
@@ -420,7 +427,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`\n🔒 Pinta Mock Server running on http://localhost:${PORT}`);
-  console.log(`   Token: ${AUTH_TOKEN}`);
+  console.log(`   Token: ${API_KEY}`);
   console.log(`   Rules: ${rules.length} rules loaded`);
   console.log(`\n   UI:        http://localhost:${PORT}/`);
   console.log(`   Events:    http://localhost:${PORT}/api/events/list`);

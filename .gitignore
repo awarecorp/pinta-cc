@@ -4,3 +4,4 @@ dist/
 env.json
 tools/.data/
 .claude/
+docs
