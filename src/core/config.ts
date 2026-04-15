@@ -2,15 +2,15 @@ import fs from "fs";
 import path from "path";
 
 export interface PintaConfig {
-  serverUrl: string;
-  authToken: string;
+  endpoint: string;
+  apiKey: string;
   pluginRoot: string;
   pluginData: string;
   rulesPath: string;
   healthPath: string;
 }
 
-function loadEnvFile(pluginRoot: string): { server_url?: string; auth_token?: string } {
+function loadEnvFile(pluginRoot: string): { endpoint?: string; api_key?: string } {
   try {
     const envPath = path.join(pluginRoot, "env.json");
     const data = fs.readFileSync(envPath, "utf-8");
@@ -25,15 +25,15 @@ export function loadConfig(): PintaConfig {
   const pluginData = process.env.CLAUDE_PLUGIN_DATA || path.join(pluginRoot, ".plugin-data");
   const envFile = loadEnvFile(pluginRoot);
 
-  const serverUrl = process.env.CLAUDE_PLUGIN_OPTION_SERVER_URL || envFile.server_url;
-  const authToken = process.env.CLAUDE_PLUGIN_OPTION_AUTH_TOKEN || envFile.auth_token;
+  const endpoint = process.env.CLAUDE_PLUGIN_OPTION_ENDPOINT || envFile.endpoint;
+  const apiKey = process.env.CLAUDE_PLUGIN_OPTION_API_KEY || envFile.api_key;
 
-  if (!serverUrl) throw new Error("server_url is not configured");
-  if (!authToken) throw new Error("auth_token is not configured");
+  if (!endpoint) throw new Error("endpoint is not configured");
+  if (!apiKey) throw new Error("api_key is not configured");
 
   return {
-    serverUrl: serverUrl.replace(/\/+$/, ""),
-    authToken,
+    endpoint: endpoint.replace(/\/+$/, ""),
+    apiKey,
     pluginRoot,
     pluginData,
     rulesPath: path.join(pluginData, "rules.json"),

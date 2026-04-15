@@ -13,7 +13,7 @@ export class PintaClient {
   }
 
   async sendEvent(event: PintaEvent): Promise<void> {
-    await this.postWithRetry(`${this.config.serverUrl}/api/events`, event);
+    await this.postWithRetry(`${this.config.endpoint}/api/events`, event);
   }
 
   async sendEventAsync(event: PintaEvent): Promise<void> {
@@ -25,7 +25,7 @@ export class PintaClient {
   }
 
   async fetchRules(): Promise<{ rules: Rule[]; version: string }> {
-    const response = await this.fetchWithTimeout(`${this.config.serverUrl}/api/rules`, {
+    const response = await this.fetchWithTimeout(`${this.config.endpoint}/api/rules`, {
       method: "GET",
       headers: this.headers(),
     });
@@ -34,7 +34,7 @@ export class PintaClient {
 
   async checkHealth(): Promise<boolean> {
     try {
-      const response = await this.fetchWithTimeout(`${this.config.serverUrl}/api/health`, {
+      const response = await this.fetchWithTimeout(`${this.config.endpoint}/api/health`, {
         method: "GET",
         headers: this.headers(),
       });
@@ -47,7 +47,7 @@ export class PintaClient {
   private headers(): Record<string, string> {
     return {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${this.config.authToken}`,
+      Authorization: `Bearer ${this.config.apiKey}`,
     };
   }
 

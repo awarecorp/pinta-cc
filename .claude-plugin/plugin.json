@@ -5,15 +5,15 @@
   "license": "MIT",
   "hooks": "./hooks/hooks.json",
   "userConfig": {
-    "server_url": {
-      "title": "Server URL",
+    "endpoint": {
+      "title": "Endpoint",
       "description": "보안 서버 URL (e.g. https://security.company.com)",
       "type": "string",
       "sensitive": false
     },
-    "auth_token": {
-      "title": "Auth Token",
-      "description": "서버 인증 토큰",
+    "api_key": {
+      "title": "API Key",
+      "description": "서버 API 키",
       "type": "string",
       "sensitive": true
     }
