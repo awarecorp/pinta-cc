@@ -1,4 +1,3 @@
-import fs from "fs";
 import path from "path";
 
 export interface PintaConfig {
@@ -8,25 +7,15 @@ export interface PintaConfig {
   pluginData: string;
   rulesPath: string;
   healthPath: string;
-}
-
-function loadEnvFile(pluginRoot: string): { endpoint?: string; api_key?: string } {
-  try {
-    const envPath = path.join(pluginRoot, "env.json");
-    const data = fs.readFileSync(envPath, "utf-8");
-    return JSON.parse(data);
-  } catch {
-    return {};
-  }
+  tracePath: string;
 }
 
 export function loadConfig(): PintaConfig {
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || process.cwd();
   const pluginData = process.env.CLAUDE_PLUGIN_DATA || path.join(pluginRoot, ".plugin-data");
-  const envFile = loadEnvFile(pluginRoot);
 
-  const endpoint = process.env.CLAUDE_PLUGIN_OPTION_ENDPOINT || envFile.endpoint;
-  const apiKey = process.env.CLAUDE_PLUGIN_OPTION_API_KEY || envFile.api_key;
+  const endpoint = process.env.CLAUDE_PLUGIN_OPTION_ENDPOINT;
+  const apiKey = process.env.CLAUDE_PLUGIN_OPTION_API_KEY;
 
   if (!endpoint) throw new Error("endpoint is not configured");
   if (!apiKey) throw new Error("api_key is not configured");
@@ -38,5 +27,6 @@ export function loadConfig(): PintaConfig {
     pluginData,
     rulesPath: path.join(pluginData, "rules.json"),
     healthPath: path.join(pluginData, "health.json"),
+    tracePath: path.join(pluginData, "trace.json"),
   };
 }

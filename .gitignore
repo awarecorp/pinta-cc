@@ -2,6 +2,7 @@ node_modules/
 dist/
 .plugin-data/
 env.json
+.envrc
 tools/.data/
 .claude/
 docs

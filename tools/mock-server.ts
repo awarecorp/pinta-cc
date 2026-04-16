@@ -298,11 +298,13 @@ async function refresh() {
 
   let html = '';
   let traceNum = 0;
-  for (const [sid, traces] of sessions) {
+  const sessionEntries = [...sessions.entries()].reverse();
+  for (const [sid, traces] of sessionEntries) {
     html += '<div class="session">';
     html += '<div class="session-header">Session: ' + sid.slice(0, 12) + '...</div>';
 
-    for (const [tid, tevents] of traces) {
+    const traceEntries = [...traces.entries()].reverse();
+    for (const [tid, tevents] of traceEntries) {
       const traceIdx = traceNum++;
       const firstTime = tevents[0]?.timestamp ? formatTime(tevents[0].timestamp) : '';
       const evCount = tevents.length;
@@ -311,12 +313,12 @@ async function refresh() {
 
       html += '<div class="trace">';
       html += '<div class="trace-header" onclick="toggleTrace(' + traceIdx + ')">';
-      html += '<span class="arrow open" id="arrow-' + traceIdx + '">&#9654;</span>';
+      html += '<span class="arrow" id="arrow-' + traceIdx + '">&#9654;</span>';
       html += '<strong>' + escapeHtml(promptPreview) + '</strong>';
       html += '<span style="color:#484f58;font-size:12px">' + evCount + ' events</span>';
       html += '<span class="time">' + firstTime + '</span>';
       html += '</div>';
-      html += '<div id="trace-body-' + traceIdx + '">';
+      html += '<div id="trace-body-' + traceIdx + '" style="display:none">';
 
       for (const ev of tevents) {
         const globalIdx = ev._idx;

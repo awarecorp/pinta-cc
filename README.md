@@ -40,8 +40,8 @@ src/
 ├── index.ts              # 엔트리포인트 (stdin 파싱 → 핸들러 라우팅 → stdout/exit code)
 ├── core/
 │   ├── types.ts          # 이벤트 타입, 타입 가드, 인터페이스
-│   ├── config.ts         # 환경변수 + env.json 로드
-│   ├── client.ts         # HTTP 클라이언트 (retry 3회, timeout 5s)
+│   ├── config.ts         # 환경변수 로드
+│   ├── client.ts         # HTTP 클라이언트 (retry 3회, timeout 5s) + buildEvent 헬퍼
 │   ├── health.ts         # 서버 헬스 관리 (3회 연속 실패 → 다운 판정)
 │   ├── cache.ts          # 규칙 캐시 (5분 TTL, 와일드카드 매칭)
 │   └── trace.ts          # traceId 관리 (ULID 생성, 파일 기반 공유)
@@ -90,13 +90,18 @@ npm run dev  # tsc --watch
 
 ### Mock 서버로 테스트
 
-1. `env.json`을 프로젝트 루트에 생성:
+1. 환경변수 설정 (둘 중 택일):
 
-```json
-{
-  "endpoint": "http://localhost:3000",
-  "api_key": "test-token"
-}
+```bash
+# 방법 A: direnv 사용 (.envrc 파일 생성 후 direnv allow)
+echo 'export CLAUDE_PLUGIN_OPTION_ENDPOINT=http://localhost:3000
+export CLAUDE_PLUGIN_OPTION_API_KEY=test-token' > .envrc
+direnv allow
+
+# 방법 B: 인라인 환경변수
+CLAUDE_PLUGIN_OPTION_ENDPOINT=http://localhost:3000 \
+CLAUDE_PLUGIN_OPTION_API_KEY=test-token \
+claude --plugin-dir .
 ```
 
 2. Mock 서버 실행:
@@ -121,17 +126,17 @@ Pinta가 기대하는 서버 엔드포인트:
 
 | Method | Path | 설명 |
 |--------|------|------|
-| `GET` | `/health` | 서버 헬스 체크 |
-| `GET` | `/rules` | 차단 규칙 목록 반환 (`{ rules, version }`) |
-| `POST` | `/events` | 이벤트 수신 |
+| `GET` | `/api/health` | 서버 헬스 체크 |
+| `GET` | `/api/rules` | 차단 규칙 목록 반환 (`{ rules, version }`) |
+| `POST` | `/api/events` | 이벤트 수신 |
 
 ### 규칙 형식
 
 ```json
 {
   "rules": [
-    { "tool": "Bash", "action": "block", "reason": "Bash 사용이 차단되었습니다" },
-    { "tool": "*", "action": "allow" }
+    { "id": "r1", "toolName": "Bash", "action": "block", "reason": "Bash is blocked" },
+    { "id": "r2", "toolName": "*", "action": "allow", "reason": "Default allow" }
   ],
   "version": "1"
 }
