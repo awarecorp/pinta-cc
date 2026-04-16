@@ -63,7 +63,7 @@ npm run mock-server   # tools/mock-server.ts — 웹 UI로 이벤트 확인
 
 테스트 프레임워크 없음. 동작 검증은 mock 서버 + `claude --plugin-dir <path>` 실행으로.
 
-설정은 환경변수(`CLAUDE_PLUGIN_OPTION_ENDPOINT`, `CLAUDE_PLUGIN_OPTION_API_KEY`) 또는 루트 `env.json`으로 주입. 둘 다 없으면 `loadConfig()`가 throw하지만 `src/index.ts`가 catch 후 exit 0으로 종료 → **조용히 비활성화**.
+설정은 환경변수 전용(`CLAUDE_PLUGIN_OPTION_ENDPOINT`, `CLAUDE_PLUGIN_OPTION_API_KEY`). Claude Code가 `plugin.json`의 `userConfig`를 자동으로 이 환경변수에 매핑한다. 없으면 `loadConfig()`가 throw하지만 `src/index.ts`가 catch 후 exit 0으로 종료 → **조용히 비활성화**. 로컬 테스트는 direnv(`.envrc`)로 환경변수 주입.
 
 ## 아키텍처의 핵심
 
@@ -105,11 +105,11 @@ Claude Code가 hook 이벤트마다 `node dist/index.js`를 새로 spawn. **in-m
 
 ### 서버 API 계약 (`src/core/client.ts`)
 
-README의 `/events`·`/rules`·`/health`와 달리 **실제 경로는 `/api/events`, `/api/rules`, `/api/health`** — `client.ts`가 ground truth.
-
 - `POST /api/events` — 재시도 3회 + exponential backoff
 - `GET /api/rules` — `{ rules, version }` 반환
+- `GET /api/health` — 서버 상태 확인
 - 전 요청 5s timeout, `Authorization: Bearer <api_key>`
+- `buildEvent()` 헬퍼로 모든 핸들러의 이벤트 객체를 단일 지점에서 생성
 
 서버는 `api_key`로 사용자/조직의 tier를 판정하고 그에 맞는 rule 스키마를 내려준다. 플러그인은 tier를 묻지 않는다.
 

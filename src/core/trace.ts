@@ -29,7 +29,7 @@ export class TraceManager {
   private tracePath: string;
 
   constructor(config: PintaConfig) {
-    this.tracePath = path.join(config.pluginData, "trace.json");
+    this.tracePath = config.tracePath;
   }
 
   /** UserPromptSubmit 시 새 traceId 생성 및 저장 */

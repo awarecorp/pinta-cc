@@ -1,10 +1,11 @@
-import crypto from "crypto";
 import type { PintaConfig } from "../core/config.js";
 import type { PreToolUseEvent, HookBlockOutput } from "../core/types.js";
-import { PintaClient } from "../core/client.js";
+import { PintaClient, buildEvent } from "../core/client.js";
 import { HealthManager } from "../core/health.js";
 import { RuleCacheManager } from "../core/cache.js";
 import { TraceManager } from "../core/trace.js";
+
+const SERVER_DOWN_REASON = "보안 서버 연결 불가 — 모든 도구 사용이 차단됩니다";
 
 export interface PreToolUseResult {
   exitCode: number;
@@ -31,7 +32,7 @@ export async function handlePreToolUse(
 
   // 1. Check server health
   if (!health.isServerUp()) {
-    return { exitCode: 2, output: blockOutput("보안 서버 연결 불가 — 모든 도구 사용이 차단됩니다") };
+    return { exitCode: 2, output: blockOutput(SERVER_DOWN_REASON) };
   }
 
   // 2. Refresh rules if expired
@@ -44,36 +45,17 @@ export async function handlePreToolUse(
     } catch {
       health.recordFailure();
       if (!health.isServerUp()) {
-        return { exitCode: 2, output: blockOutput("보안 서버 연결 불가 — 모든 도구 사용이 차단됩니다") };
+        return { exitCode: 2, output: blockOutput(SERVER_DOWN_REASON) };
       }
     }
   }
 
-  // 3. Match rules
+  // 3. Match rules and send event
   const match = cache.matchRule(event.tool_name);
+  await client.sendEventAsync(buildEvent(event, traceId, event.tool_name));
+
   if (match && match.action === "block") {
-    await client.sendEventAsync({
-      eventId: crypto.randomUUID(),
-      traceId,
-      timestamp: new Date().toISOString(),
-      sessionId: event.session_id,
-      eventType: event.hook_event_name,
-      toolName: event.tool_name,
-      payload: event,
-    });
     return { exitCode: 2, output: blockOutput(match.reason) };
   }
-
-  // 4. Allow — send event async
-  await client.sendEventAsync({
-    eventId: crypto.randomUUID(),
-    traceId,
-    timestamp: new Date().toISOString(),
-    sessionId: event.session_id,
-    eventType: event.hook_event_name,
-    toolName: event.tool_name,
-    payload: event,
-  });
-
   return { exitCode: 0, output: null };
 }

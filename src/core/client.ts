@@ -1,9 +1,22 @@
+import crypto from "crypto";
 import type { PintaConfig } from "./config.js";
-import type { PintaEvent, Rule } from "./types.js";
+import type { BaseEvent, PintaEvent, Rule } from "./types.js";
 
 const TIMEOUT_MS = 5000;
 const MAX_RETRIES = 3;
 const BACKOFF_BASE_MS = 1000;
+
+export function buildEvent(event: BaseEvent, traceId: string, toolName?: string): PintaEvent {
+  return {
+    eventId: crypto.randomUUID(),
+    traceId,
+    timestamp: new Date().toISOString(),
+    sessionId: event.session_id,
+    eventType: event.hook_event_name,
+    ...(toolName ? { toolName } : {}),
+    payload: event,
+  };
+}
 
 export class PintaClient {
   private config: PintaConfig;

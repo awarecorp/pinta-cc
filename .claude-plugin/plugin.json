@@ -7,13 +7,13 @@
   "userConfig": {
     "endpoint": {
       "title": "Endpoint",
-      "description": "보안 서버 URL (e.g. https://security.company.com)",
+      "description": "Security server URL (e.g. https://security.company.com)",
       "type": "string",
       "sensitive": false
     },
     "api_key": {
       "title": "API Key",
-      "description": "서버 API 키",
+      "description": "Server API key",
       "type": "string",
       "sensitive": true
     }
