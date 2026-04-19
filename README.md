@@ -24,13 +24,22 @@ If the CLI is missing or not logged in, `PreToolUse` is blocked (deny) and all o
 
 ## Installation
 
-### Install from GitHub
+### Install from the marketplace (recommended)
+
+```bash
+/plugin marketplace add awarecorp/pinta-cc
+/plugin install pinta-cc@pinta-ai
+```
+
+After installation, Claude Code automatically pulls new versions from the marketplace on every startup.
+
+### Install directly from GitHub (alternative)
 
 ```bash
 claude plugin install github:awarecorp/pinta-cc
 ```
 
-### Install from a local directory
+### Install from a local directory (development)
 
 ```bash
 claude --plugin-dir /path/to/pinta-cc
