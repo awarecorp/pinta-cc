@@ -162,6 +162,8 @@ function snakeCase(hookEventName: string): string {
 
 function flattenEvent(event: BaseEvent): OtlpAttribute[] {
   const out: OtlpAttribute[] = [];
+  // Discriminator first so aware-backend's detectIngestType hits it cheaply.
+  out.push({ key: "ingest.type", value: { stringValue: "cc" } });
   // Always set cc.hook explicitly so server queries have a canonical key
   // regardless of incoming field name.
   out.push({ key: "cc.hook", value: { stringValue: event.hook_event_name } });
