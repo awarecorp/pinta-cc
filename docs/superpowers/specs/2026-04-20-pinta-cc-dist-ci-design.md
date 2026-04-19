@@ -20,6 +20,13 @@ Out of scope and deferred to a separate spec:
 - Branch protection rules (GitHub UI)
 - npm publish, GitHub Releases
 
+## Deployment prerequisites (manual, one-time)
+
+These are not part of the workflow files but must hold for the design to function:
+
+- Repo settings → Actions → Workflow permissions: confirm "Read and write permissions" is allowed (or that `contents: write` is permitted per-workflow). Without this the bot push fails.
+- If branch protection on `main` is later enabled to require PR review, the `github-actions[bot]` actor must be in the bypass list, or `build-dist.yml` will be unable to push back to `main`.
+
 ## Architecture
 
 Two GitHub Actions workflows under `.github/workflows/`:
@@ -42,16 +49,23 @@ These are independent units. PR validation never writes to the repo. Dist build 
 
 ### 1. `.github/workflows/pr-validate.yml`
 
-**Trigger:** `pull_request` targeting any branch.
+**Trigger:** `pull_request` (default base: any branch where this workflow file exists).
 
-**Permissions:** default (read-only contents).
+**Permissions:**
+
+```yaml
+permissions:
+  contents: read
+```
+
+Explicit even though `read` is the default — keeps intent legible and survives any future change to repo-wide default permissions.
 
 **Steps:**
 1. `actions/checkout@v4`
 2. `actions/setup-node@v4` with `node-version: 22` and `cache: 'npm'`
 3. `npm ci`
 4. `npm run build` (must succeed → `tsc` exit 0)
-5. `npm run test:redact` (must succeed → all 33 cases pass)
+5. `npm run test:redact` (must succeed → all cases pass)
 
 **No git mutation.** No upload-artifact (dist is rebuilt on main, so artifact retention adds no value here).
 
@@ -76,8 +90,10 @@ permissions:
   contents: write
 ```
 
+**Concurrency:** group on `build-dist-${{ github.ref }}`, cancel-in-progress: false. Prevents two simultaneous main pushes from racing each other and producing duplicate dist commits.
+
 **Steps:**
-1. `actions/checkout@v4` with `fetch-depth: 0` (so commit can push back without shallow-fetch issues) and `token: ${{ secrets.GITHUB_TOKEN }}`
+1. `actions/checkout@v4` (default shallow checkout is fine; `git push` of new commits does not need full history) with `token: ${{ secrets.GITHUB_TOKEN }}`
 2. `actions/setup-node@v4` with `node-version: 22` and `cache: 'npm'`
 3. `npm ci`
 4. `npm run build`
