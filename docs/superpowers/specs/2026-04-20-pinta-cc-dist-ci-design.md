@@ -1,17 +1,17 @@
 # pinta-cc dist CI + README placeholder cleanup — Design
 
 **Date:** 2026-04-20
-**Repo:** `git@github.com:awarecorp/pinta-plugin.git` (current main)
+**Repo:** `git@github.com:awarecorp/pinta-cc.git` (current main)
 **Scope:** Step 1+5 of plugin distribution roadmap. Marketplace repo (Step 2) is a separate spec.
 
 ## Goal
 
-Make `dist/` available on `main` to every install path (`claude plugin install github:awarecorp/pinta-plugin` today, marketplace path later) without requiring contributors to commit build artifacts. PR-time validation prevents broken main.
+Make `dist/` available on `main` to every install path (`claude plugin install github:awarecorp/pinta-cc` today, marketplace path later) without requiring contributors to commit build artifacts. PR-time validation prevents broken main.
 
 ## Background
 
 - The plugin runs from `dist/index.js` (per `hooks/hooks.json`).
-- `dist/` is currently `.gitignored` and not present on `main`. A user running `claude plugin install github:awarecorp/pinta-plugin` today gets a non-functional plugin (no `dist/`).
+- `dist/` is currently `.gitignored` and not present on `main`. A user running `claude plugin install github:awarecorp/pinta-cc` today gets a non-functional plugin (no `dist/`).
 - `CLAUDE.md` already specifies the intended model: "GitHub Actions가 빌드·커밋한다 (로컬 `dist/`는 `.gitignore` 대상)". This spec implements that contract.
 - README has placeholder `your-org/pinta-cc` referencing a wrong org and wrong repo name.
 
@@ -126,7 +126,7 @@ The "no dist changes" branch is the common case for source-only edits (README ty
 Scope: only the placeholders that are **decidable today**.
 
 Replacements (all occurrences):
-- `your-org/pinta-cc` → `awarecorp/pinta-plugin`
+- `your-org/pinta-cc` → `awarecorp/pinta-cc`
 
 Not changed in this spec:
 - The `claude plugin install github:...` command itself stays. Marketplace install path (`/plugin install pinta-cc@<marketplace>`) becomes the recommended path in Step 2 and rewrites this section then.
@@ -145,7 +145,7 @@ Merge into main
   → if dist/ diff: bot commits "chore(dist): rebuild for <sha>" and pushes
   → push lands on main, but paths-ignore: ['dist/**'] prevents re-trigger
 
-User runs `claude plugin install github:awarecorp/pinta-plugin`
+User runs `claude plugin install github:awarecorp/pinta-cc`
   → Claude Code clones main HEAD, finds dist/index.js, hooks work.
 ```
 
@@ -169,7 +169,7 @@ This spec ships infrastructure, not code, so testing is operator-driven:
 1. **Workflow files commit** — push to a feature branch, open PR, watch `pr-validate.yml` run end-to-end (build pass, test:redact pass).
 2. **Dummy main push** — after merging the workflows, make a small README/source edit that produces a dist diff (e.g., bump a version string). Push to main. Verify `build-dist.yml` runs once, the bot commits a dist diff, and a *second* run is **not** triggered by the bot push.
 3. **No-op main push** — make a doc-only edit that does not affect built output. Verify `build-dist.yml` runs but exits with "No dist changes; nothing to commit."
-4. **End-user install smoke** — `claude plugin install github:awarecorp/pinta-plugin` on a clean machine. Verify the plugin loads (`hooks/hooks.json` resolves to a working `dist/index.js`).
+4. **End-user install smoke** — `claude plugin install github:awarecorp/pinta-cc` on a clean machine. Verify the plugin loads (`hooks/hooks.json` resolves to a working `dist/index.js`).
 
 ## Decisions log
 

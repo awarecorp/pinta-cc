@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Land two GitHub Actions workflows (`pr-validate.yml`, `build-dist.yml`) and a README placeholder fix so that `claude plugin install github:awarecorp/pinta-plugin` produces a working plugin from `main` HEAD without contributors committing build artifacts.
+**Goal:** Land two GitHub Actions workflows (`pr-validate.yml`, `build-dist.yml`) and a README placeholder fix so that `claude plugin install github:awarecorp/pinta-cc` produces a working plugin from `main` HEAD without contributors committing build artifacts.
 
-**Architecture:** Two independent workflow files under `.github/workflows/`. PR workflow runs `build` + `test:redact` with read-only permissions. Main-push workflow uses `paths-ignore: ['dist/**']` to break the bot self-trigger loop, force-adds `dist/` (which stays in `.gitignore`), and pushes a `github-actions[bot]` commit back to `main`. README install command updated to the real `awarecorp/pinta-plugin` repo.
+**Architecture:** Two independent workflow files under `.github/workflows/`. PR workflow runs `build` + `test:redact` with read-only permissions. Main-push workflow uses `paths-ignore: ['dist/**']` to break the bot self-trigger loop, force-adds `dist/` (which stays in `.gitignore`), and pushes a `github-actions[bot]` commit back to `main`. README install command updated to the real `awarecorp/pinta-cc` repo.
 
 **Tech Stack:** GitHub Actions, Node 22, npm, bash. No new code dependencies.
 
@@ -18,7 +18,7 @@
 |---|---|---|
 | `.github/workflows/pr-validate.yml` | Create | PR-time build + redact-test gate |
 | `.github/workflows/build-dist.yml` | Create | main-push dist rebuild + bot commit |
-| `README.md` (lines 30, 36, 139) | Modify | Replace `your-org/pinta-cc` and `/path/to/pinta-cc` placeholders with `awarecorp/pinta-plugin` |
+| `README.md` (lines 30, 36, 139) | Modify | Replace `your-org/pinta-cc` and `/path/to/pinta-cc` placeholders with `awarecorp/pinta-cc` |
 | `.gitignore` | **Unchanged** | `dist/` stays ignored; CI uses `git add -f` |
 
 ---
@@ -160,17 +160,12 @@ If the line numbers differ, take the line numbers from grep — the text replace
 
 Use the Edit tool:
 - old_string: `claude plugin install github:your-org/pinta-cc`
-- new_string: `claude plugin install github:awarecorp/pinta-plugin`
+- new_string: `claude plugin install github:awarecorp/pinta-cc`
 - replace_all: false
 
-- [ ] **Step 3: Replace local plugin-dir examples (lines 36 and 139, identical strings)**
+- [ ] **Step 3: Local plugin-dir examples (lines 36 and 139) — no change**
 
-Use the Edit tool:
-- old_string: `claude --plugin-dir /path/to/pinta-cc`
-- new_string: `claude --plugin-dir /path/to/pinta-plugin`
-- replace_all: true
-
-Rationale: same substring appears twice. After cloning `git clone git@github.com:awarecorp/pinta-plugin.git`, the local directory is `pinta-plugin/`, so the example path should match.
+The existing `claude --plugin-dir /path/to/pinta-cc` is already correct: cloning `git clone git@github.com:awarecorp/pinta-cc.git` produces directory `pinta-cc/`, so the example matches. No edit needed.
 
 - [ ] **Step 4: Confirm no over-replacement**
 
@@ -191,7 +186,7 @@ Expected: no output (exit code 1 from grep is fine).
 
 ```bash
 git add README.md
-git commit -m "docs(readme): point install commands at awarecorp/pinta-plugin"
+git commit -m "docs(readme): point install commands at awarecorp/pinta-cc"
 ```
 
 ---
@@ -232,7 +227,7 @@ Expected: "Build dist" workflow runs, but the "Commit dist if changed" step prin
 
 On a clean machine (or a fresh shell with no plugin cache):
 ```bash
-claude plugin install github:awarecorp/pinta-plugin
+claude plugin install github:awarecorp/pinta-cc
 ```
 Then trigger any hook in Claude Code (e.g., open a session, submit a prompt).
 Expected: the install succeeds and the hook fires without errors about missing `dist/index.js`.
@@ -252,4 +247,4 @@ No commit step — Task 4 is verification, not a code change.
 - [ ] Task 3 README placeholders fixed and committed
 - [ ] Task 4 operator verification complete (all 6 steps green)
 
-Once all four are checked, Step 1+5 from the distribution roadmap is done and `claude plugin install github:awarecorp/pinta-plugin` is the supported install path. Step 2 (marketplace repo) is the next spec.
+Once all four are checked, Step 1+5 from the distribution roadmap is done and `claude plugin install github:awarecorp/pinta-cc` is the supported install path. Step 2 (marketplace repo) is the next spec.
