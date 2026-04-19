@@ -6,7 +6,7 @@ import type { Identity } from "./identity.js";
 import type { BaseEvent } from "./types.js";
 import { redact, truncate } from "./redact.js";
 
-const PLUGIN_VERSION = "1.0.0"; // keep in sync with .claude-plugin/plugin.json
+const PLUGIN_VERSION = "1.1.0"; // keep in sync with .claude-plugin/plugin.json
 
 /**
  * Resolve the Claude Code CLI version by reading the package.json next to
