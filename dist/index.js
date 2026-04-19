@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const config_js_1 = require("./core/config.js");
 const types_js_1 = require("./core/types.js");
 const pinta_identity_js_1 = require("./enterprise/pinta-identity.js");
+const pinta_guard_js_1 = require("./enterprise/pinta-guard.js");
 const pre_tool_use_js_1 = require("./handlers/pre-tool-use.js");
 const post_tool_use_js_1 = require("./handlers/post-tool-use.js");
 const user_prompt_js_1 = require("./handlers/user-prompt.js");
@@ -20,18 +21,19 @@ async function readStdin() {
 }
 async function main() {
     let exitCode = 0;
-    // The DI seam: this is the ONLY place we instantiate an enterprise resolver.
-    // Future OSS extraction swaps this line for `NoOpIdentityResolver`.
+    // The DI seam: this is the ONLY place we instantiate enterprise impls.
+    // Future OSS extraction swaps these for NoOp* variants.
     const identityResolver = new pinta_identity_js_1.PintaIdentityResolver();
     try {
         const config = (0, config_js_1.loadConfig)();
+        const guardClient = new pinta_guard_js_1.PintaGuardClient(config);
         const raw = await readStdin();
         const event = JSON.parse(raw);
         if ((0, types_js_1.isSkippedHook)(event)) {
             exitCode = await (0, default_js_1.handleDefault)(event);
         }
         else if ((0, types_js_1.isPreToolUseEvent)(event)) {
-            const result = await (0, pre_tool_use_js_1.handlePreToolUse)(event, config, identityResolver);
+            const result = await (0, pre_tool_use_js_1.handlePreToolUse)(event, config, identityResolver, guardClient);
             exitCode = result.exitCode;
             if (result.output) {
                 process.stdout.write(JSON.stringify(result.output));
