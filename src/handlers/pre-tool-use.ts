@@ -1,11 +1,10 @@
 import type { PintaConfig } from "../core/config.js";
 import type { PreToolUseEvent, HookBlockOutput } from "../core/types.js";
-import { PintaClient, buildEvent } from "../core/client.js";
-import { HealthManager } from "../core/health.js";
-import { RuleCacheManager } from "../core/cache.js";
+import type { IdentityResolver } from "../core/identity.js";
+import { Transport } from "../core/transport.js";
 import { TraceManager } from "../core/trace.js";
-
-const SERVER_DOWN_REASON = "보안 서버 연결 불가 — 모든 도구 사용이 차단됩니다";
+import { buildOtlpPayload } from "../core/otlp.js";
+import { authRequiredMessage } from "./auth-message.js";
 
 export interface PreToolUseResult {
   exitCode: number;
@@ -25,37 +24,19 @@ function blockOutput(reason: string): HookBlockOutput {
 export async function handlePreToolUse(
   event: PreToolUseEvent,
   config: PintaConfig,
+  identityResolver: IdentityResolver,
 ): Promise<PreToolUseResult> {
-  const health = new HealthManager(config);
-  const client = new PintaClient(config);
+  const transport = new Transport(config);
+  await transport.flush();
+
+  const identity = await identityResolver.resolve();
+  if (!identity) {
+    process.stderr.write(authRequiredMessage());
+    return { exitCode: 2, output: blockOutput(authRequiredMessage()) };
+  }
+
   const traceId = new TraceManager(config).currentTrace();
-
-  // 1. Check server health
-  if (!health.isServerUp()) {
-    return { exitCode: 2, output: blockOutput(SERVER_DOWN_REASON) };
-  }
-
-  // 2. Refresh rules if expired
-  const cache = new RuleCacheManager(config);
-  if (cache.isExpired()) {
-    try {
-      const { rules, version } = await client.fetchRules();
-      cache.updateRules(rules, version);
-      health.recordSuccess();
-    } catch {
-      health.recordFailure();
-      if (!health.isServerUp()) {
-        return { exitCode: 2, output: blockOutput(SERVER_DOWN_REASON) };
-      }
-    }
-  }
-
-  // 3. Match rules and send event
-  const match = cache.matchRule(event.tool_name);
-  await client.sendEventAsync(buildEvent(event, traceId, event.tool_name));
-
-  if (match && match.action === "block") {
-    return { exitCode: 2, output: blockOutput(match.reason) };
-  }
+  const payload = buildOtlpPayload({ event, traceId, identity });
+  await transport.send(payload);
   return { exitCode: 0, output: null };
 }

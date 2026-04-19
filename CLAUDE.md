@@ -6,51 +6,54 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 이 repo는 **Claude Code 플러그인**이다. Claude Code가 정의한 hook 규격을 따르고, Claude Code marketplace + `/plugin install` 흐름으로 배포된다.
 
-**제품 포지셔닝**: OSS/Enterprise가 **같은 플러그인, 같은 바이너리**다. 단일 repo, 단일 배포 산출물. 차별화는 사용자가 연결하는 **서버 측**에서 일어난다. 따라서:
+**제품 포지셔닝**: 이 repo는 **Enterprise 플러그인**이다. 사용자가 Pinta 백엔드에 붙여 사용한다. OSS 공개는 **미래에 별도 플러그인 repo**로 파생할 예정이며, 현재 enterprise 코드베이스 내에서 **OSS 재사용 가능한 core**와 **enterprise 전용 모듈**을 모듈 경계로 분리해둔다. 미래 OSS 플러그인이 core를 재활용할 수 있게 하기 위함.
 
-- OSS 사용자 — 임의 endpoint(`endpoint` + `api_key`)에 붙여 이벤트 전송 + 기본 rule 기반 차단을 그대로 사용
-- Enterprise 사용자 — 같은 플러그인을 사내 Pinta 서버에 붙이면 고급 rule bundle / audit / SSO-scoped policy / 중앙 정책 배포 등이 자동으로 활성화됨 (전부 서버가 내려주는 데이터로 작동)
+- **Enterprise plugin** (현재 이 repo) — Pinta 백엔드 + Pinta CLI 기반 identity + 서버 측 issue detection에 의존.
+- **OSS plugin** (미래 별도 repo) — core 모듈을 재사용. Pinta CLI 의존 없음. 사용자가 자기 OTLP collector / 자체 백엔드를 지정.
 
-플러그인 코드에는 `if (enterprise) { ... }` 같은 tier 분기가 **없다**. 플러그인은 "서버가 내려주는 규칙/지시를 충실히 평가하는 런타임"이고, OSS와 EE의 차이는 **서버가 어떤 규칙·지시를 내려주느냐**로만 구분된다.
+### 모듈 경계 규칙
+
+- `src/core/`, `src/handlers/`, `src/index.ts` — **OSS-reusable**. `src/enterprise/`를 import하지 않는다.
+- `src/enterprise/` — Enterprise 전용. core 인터페이스의 구현체를 제공.
+- 의존 방향: `core → (nothing)`, `enterprise → core`, `index.ts → both`.
+- `index.ts`는 enterprise 구현체를 core 인터페이스에 **DI 방식**으로 와이어링한다. `if (enterprise) { ... }` 같은 런타임 분기는 쓰지 않는다 — 분기 대신 와이어링 교체로 OSS 파생 준비.
 
 ## 이게 어떻게 작동하나
 
 ```
 사용자 설정:  endpoint + api_key
-            ↓ (매 세션 / 5분 TTL)
-플러그인:    GET /api/rules   → 서버가 tier에 맞는 규칙 반환
-            POST /api/events → 이벤트 전송 (tier별로 서버가 후처리)
-            ↓
-- 기본 서버:  toolName 기반 간단 규칙만 반환
-- 사내 서버:  arg regex, path 검사, 서명 bundle, audit 지시 등 풍부한 규칙 반환
+            ↓ (every hook invocation)
+플러그인:    pinta identity id/email     → resource attrs (member.identity.*)
+            POST {endpoint}/traces       → OTLP resourceSpans (single span per hook)
+            ↓ on transport failure
+            .plugin-data/failed-spans.jsonl 에 큐잉, 다음 hook이 flush 시도
+
+서버 측: trace 저장소에서 비동기로 issue detection 수행
 ```
 
-**결론**: 플러그인 진화 = "rule/event 스키마가 풍부해지는 것" + "그 스키마를 평가할 런타임이 늘어나는 것". 기능 추가 시 항상 "서버가 이걸 내려주기만 하면 이 플러그인은 해석할 수 있다"가 되도록 설계.
+**결론**: 플러그인은 Bronze layer 전송기다. hook event의 모든 top-level 필드를 `cc.<key>` 속성으로 평탄화해 OTLP로 보낸다. 정책 평가·issue detection은 서버 영역.
 
-### 그러므로 repo 분리 / side-by-side / 데몬 / npm 의존 분기 = 불필요
+### 배포 정책
 
+- 이 repo는 **Enterprise 플러그인만 배포**한다. OSS 플러그인은 미래에 **별도 repo**로 파생.
 - 플러그인 marketplace는 startup 시 자동 업데이트 + managed settings로 버전 pinning(`sha`)을 지원 → **배포 갱신은 marketplace가 전담**
-- 외부 데몬·sidecar·사용자 측 빌드 단계를 만들지 않는다
-- `dist/`는 GitHub Actions가 빌드·커밋한다 (로컬 `dist/`는 `.gitignore` 대상). 사용자 측 빌드 단계는 없다
-
-### 단, 민감 로직을 플러그인에 숨겨야 할 필요가 생기면
-
-현재 정책상으로는 **없음**. 모든 차별화가 서버 데이터로 표현 가능하다는 전제. 만약 플러그인 내부에 공개 불가한 로직(예: 고유 탐지 알고리즘)이 생기면 그때 private marketplace + closed-source 배포를 검토한다. 선제적으로 repo를 쪼개지 않는다.
+- 외부 데몬·sidecar·사용자 측 빌드 단계를 만들지 않는다.
+- `dist/`는 GitHub Actions가 빌드·커밋한다 (로컬 `dist/`는 `.gitignore` 대상). 사용자 측 빌드 단계는 없다.
 
 ## 기능 범위 (현재 구현)
 
-14종 Claude Code hook 이벤트를 캡처해 서버의 `/api/events`로 전송하고, PreToolUse에서 서버 규칙(`/api/rules`)에 따라 도구 사용을 차단한다.
+11종 Claude Code hook 이벤트를 OTLP span으로 변환해 `POST {endpoint}/traces`로 전송한다. 차단은 identity 미해결 시에만 발생(PreToolUse exit 2 / 그 외 exit 1).
 
-- 이벤트 전송 (14종 hook → 단일 엔트리)
-- toolName 기반 rule 차단 + 5분 TTL 로컬 캐시
-- 서버 헬스 관리 (3회 연속 실패 시 fail-close, 모든 도구 차단)
-- ULID 기반 traceId (한 사용자 턴 = 한 traceId)
+- 이벤트 전송 (11종 hook → OTLP `resourceSpans`, hook 당 span 1개)
+- skip되는 hook (Notification / TaskCreated / TaskCompleted)은 default handler에서 즉시 exit 0
+- ULID 기반 traceId (UserPromptSubmit이 새 trace 시작)
+- 전송 실패 시 `.plugin-data/failed-spans.jsonl` 큐에 적재 (cap 1000), 다음 hook 호출이 flush
+- Pinta CLI(`pinta identity id/email`)로 member identity 해결, resource attribute로 부착
 
-**확장 방향**(전부 "서버 스키마 + 평가 런타임" 축):
-- rule 스키마에 arg regex / path pattern / session context 조건 추가
-- 서명된 rule bundle 검증(서명 키는 서버 소유)
-- audit 전용 이벤트 타입 추가
-- 전부 OSS 코드로 구현되고, OSS 서버가 안 내려주면 그냥 안 쓰일 뿐
+**확장 방향**:
+- hook 라우팅 추가 (`hooks/hooks.json` + `src/handlers/`에 분기 추가)
+- skip 목록 조정 (`src/core/types.ts`의 `SKIP_HOOKS` set)
+- 새 attribute 키는 별도 enumerate 없이 hook event에 필드만 추가되면 자동 평탄화됨
 
 ## 주요 명령
 
@@ -80,22 +83,22 @@ Claude Code가 hook 이벤트마다 `node dist/index.js`를 새로 spawn. **in-m
 2. 매칭 handler 실행 → exit code / stdout 반환
 3. 최상위 catch-all에서 exit 0 강제 — 플러그인 오류가 Claude Code UX를 깨뜨리지 않도록 fail-open. 단 PreToolUse 차단은 의도적으로 exit 2.
 
-### PreToolUse 차단 로직 (`src/handlers/pre-tool-use.ts`)
+### Identity 검증 로직 (`src/handlers/pre-tool-use.ts`)
 
-1. `HealthManager.isServerUp()` — 서버 다운이면 **즉시 전부 차단** (fail-close)
-2. `RuleCacheManager.isExpired()` (TTL 5분) 시에만 `/api/rules` 요청
-3. 매칭 규칙이 `block`이면 exit 2 + `HookBlockOutput` stdout
-4. 모든 경로에서 이벤트는 `sendEventAsync`(실패 무시)로 전송
+1. `Transport.flush()` — 큐에 쌓인 실패 payload를 best-effort로 재전송
+2. `identityResolver.resolve()` — Pinta CLI 호출
+   - 실패 시 stdout으로 `HookBlockOutput`(영문 안내 메시지) + exit 2
+3. `buildOtlpPayload({ event, traceId, identity })` → `Transport.send()` → exit 0
 
-**Fail-close와 fail-open이 공존**: 차단 판단은 fail-close, 로깅은 fail-open, 최상위 예외는 fail-open.
+서버 규칙 평가는 더 이상 클라이언트 책임이 아니다. fail-close는 identity 미해결에 한정.
 
 ### 파일 기반 상태 (`.plugin-data/`)
 
-- `rules.json` — 서버 규칙 + lastSynced (`RuleCacheManager`, TTL 5분)
-- `health.json` — 연속 실패 카운트 (`HealthManager`, 3회 실패 = 다운 판정)
 - `trace.json` — 현재 ULID traceId (`TraceManager`)
+- `failed-spans.jsonl` — 전송 실패 OTLP payload 큐 (`RetryQueue`, JSONL, cap 1000)
+- `failed-spans.jsonl.lock` — 큐 동시 접근 방지 lock (best-effort, 30초 stale TTL)
 
-`CLAUDE_PLUGIN_DATA`로 경로 override 가능, 기본 `<pluginRoot>/.plugin-data/`.
+`CLAUDE_PLUGIN_DATA`로 경로 override 가능. 과거 `rules.json` / `health.json`은 더 이상 생성되지 않는다.
 
 ### Trace ID 계약
 
@@ -103,27 +106,27 @@ Claude Code가 hook 이벤트마다 `node dist/index.js`를 새로 spawn. **in-m
 - 이후 PreToolUse / PostToolUse는 `currentTrace()`로 동일 ID 재사용
 - **한 사용자 턴 = 하나의 traceId**. 이 계약을 깨지 말 것.
 
-### 서버 API 계약 (`src/core/client.ts`)
+### OTLP 전송 (`src/core/transport.ts`)
 
-- `POST /api/events` — 재시도 3회 + exponential backoff
-- `GET /api/rules` — `{ rules, version }` 반환
-- `GET /api/health` — 서버 상태 확인
-- 전 요청 5s timeout, `Authorization: Bearer <api_key>`
-- `buildEvent()` 헬퍼로 모든 핸들러의 이벤트 객체를 단일 지점에서 생성
+- `POST {endpoint}/traces` — OTLP/HTTP JSON 본문, header `x-api-key: <api_key>`, timeout 5s
+- 단일 hook 이벤트 = `resourceSpans` 1개 = `scopeSpans` 1개 = `span` 1개
+- 전송 실패 시 payload를 `failed-spans.jsonl`에 enqueue, 다음 hook이 batch flush
+- `buildOtlpPayload()`는 hook event의 모든 top-level key를 `cc.<key>` 속성으로 평탄화 (Bronze)
 
-서버는 `api_key`로 사용자/조직의 tier를 판정하고 그에 맞는 rule 스키마를 내려준다. 플러그인은 tier를 묻지 않는다.
+서버는 `api_key`로 사용자/조직을 판정하고 trace 저장 + 비동기 issue detection을 수행한다.
+플러그인은 server-side rule을 더 이상 pull하지 않는다.
 
 ## 새 기능 추가 체크리스트
 
 기능을 구상할 때 매번 자문:
 
-1. **이게 플러그인 런타임 능력인가, 서버 데이터인가?** 런타임 능력(새 rule 타입 평가, 새 event 생성)은 OSS 코드에 그대로 들어간다. 데이터/정책(실제 rule 내용)은 서버 영역.
-2. **OSS 서버가 안 내려줘도 플러그인이 조용히 넘어가나?** 즉 rule/event 스키마는 **addition-only**로 설계. 새 필드가 없으면 기본값·skip.
-3. **서버가 내려주는 rule 없이도 플러그인이 의미 있는 일을 하나?** OSS 사용자는 자기 서버를 직접 운영하기도 하므로 기본 동작은 항상 정의.
+1. **이 기능은 OSS로도 재사용 가능한가, Enterprise 전용인가?** 재사용 가능이면 `src/core/` 또는 `src/handlers/`에 둔다. Enterprise 전용(예: Pinta CLI 의존, Pinta 백엔드 특정 스키마)이면 `src/enterprise/`에 둔다.
+2. **Enterprise 코드가 core를 import하는 방향만 유지되는가?** `core → enterprise` 방향의 import가 생기면 미래 OSS 플러그인 파생이 깨진다.
+3. **Core 인터페이스가 enterprise 구현체를 DI로 받는 형태인가?** `src/index.ts`의 와이어링 지점에서 구현체를 교체할 수 있어야 OSS 파생 시 `NoOp`/`EnvVar` 같은 대체 구현으로 자연스럽게 바꿀 수 있다.
 
 ## 새 hook 이벤트 추가
 
-`hooks/hooks.json`의 14종 모두 `dist/index.js`로 라우팅된다. 새 이벤트를 지원하려면 네 곳 수정:
+`hooks/hooks.json`의 모든 hook이 `dist/index.js`로 라우팅된다. 새 이벤트를 지원하려면 네 곳 수정:
 1. `hooks/hooks.json`에 엔트리
 2. `src/core/types.ts`에 interface + type guard
 3. `src/handlers/`에 핸들러 (또는 `default.ts` 활용)
@@ -133,9 +136,9 @@ Claude Code가 hook 이벤트마다 `node dist/index.js`를 새로 spawn. **in-m
 
 - [ ] `dist/`는 GitHub Actions가 push 시 자동 빌드·커밋 (로컬에서 별도 커밋 불필요)
 - [ ] `plugin.json` / `marketplace.json`의 version 업데이트 (같은 버전이면 Claude Code가 업데이트로 인식하지 않음)
-- [ ] README와 `src/core/client.ts`의 API 경로가 일치하는지 (과거 불일치 이력 있음)
-- [ ] rule/event 스키마 변경이 있었다면, 구버전 서버와도 호환되는지(addition-only) 확인
+- [ ] README와 `src/core/transport.ts`의 endpoint 경로가 일치하는지 (과거 불일치 이력 있음)
+- [ ] OTLP attribute 키 변경이 있었다면, backend parser와의 호환성을 먼저 확인
 
 ## Cross-project 맥락
 
-상위 `pinta-ai/CLAUDE.md`의 결합 정책을 따른다. 이벤트 스키마는 `aware-backend`의 `/api/events`와 Tight하게 묶이므로 필드 변경 시 소비 측 영향을 먼저 확인할 것. 이 플러그인은 `pinta-types` 공유 타입을 쓰지 않고 자체 `src/core/types.ts`를 유지한다.
+상위 `pinta-ai/CLAUDE.md`의 결합 정책을 따른다. OTLP wire format은 `aware-backend`의 `/traces` 엔드포인트와 Tight하게 묶이므로 span attribute 키 변경 시 backend parser 영향을 먼저 확인할 것. `mcp-logger`와 동일 wire format을 사용한다.

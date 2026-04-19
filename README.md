@@ -1,14 +1,26 @@
 # Pinta
 
-Claude Code 보안 모니터링 플러그인 -- 모든 이벤트를 캡처하고 서버 관리 규칙으로 도구 사용을 제어합니다.
+Claude Code 보안 모니터링 플러그인 — Claude Code hook 이벤트를 OTLP span으로 변환해 trace endpoint로 전송합니다. 정책 평가·issue detection은 서버 측에서 비동기로 수행됩니다.
 
 ## 주요 기능
 
-- **전체 이벤트 캡처**: 프롬프트, 도구 요청/응답, 세션, 알림 등 14종 이벤트를 보안 서버로 전송
-- **도구 차단**: 서버에서 관리하는 규칙으로 특정 도구 사용을 차단 (PreToolUse hook)
-- **Fail-Close**: 보안 서버 연결 불가 시 모든 도구 사용을 차단
-- **트레이스 추적**: 사용자 턴 단위로 ULID 기반 `traceId`를 부여하여 이벤트 흐름 추적
-- **로컬 룰 캐싱**: 서버 규칙을 5분 TTL로 로컬 캐시하여 성능 최적화
+- **OTLP 전송**: 11종 hook 이벤트를 OTLP/HTTP `resourceSpans`로 변환해 `POST {endpoint}/traces` 전송
+- **Bronze 평탄화**: hook event의 모든 top-level 필드를 `cc.<key>` 속성으로 평탄화 (서버 parser가 그대로 소비)
+- **Identity-only fail-close**: Pinta CLI identity가 해결되지 않으면 PreToolUse는 exit 2(deny), 그 외 hook은 exit 1
+- **트레이스 추적**: 사용자 턴 단위로 ULID 기반 `traceId`를 부여 (UserPromptSubmit이 새 trace 시작)
+- **재전송 큐**: 전송 실패 시 `.plugin-data/failed-spans.jsonl`에 적재(cap 1000), 다음 hook 호출이 batch flush
+
+## 인증
+
+이 플러그인은 Pinta CLI를 통해 member identity를 해결합니다. 사용 전에 CLI 설치·로그인이 필요합니다:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/awarecorp/aware-cli/main/install.sh | sh
+pinta login
+pinta identity id     # (선택) 확인
+```
+
+CLI가 없거나 로그인되지 않으면 PreToolUse는 차단(deny)되고, 그 외 hook은 stderr 안내 메시지 + exit 1 처리됩니다.
 
 ## 설치
 
@@ -37,36 +49,45 @@ claude --plugin-dir /path/to/pinta-cc
 
 ```
 src/
-├── index.ts              # 엔트리포인트 (stdin 파싱 → 핸들러 라우팅 → stdout/exit code)
-├── core/
-│   ├── types.ts          # 이벤트 타입, 타입 가드, 인터페이스
+├── index.ts              # 엔트리포인트 (stdin 파싱 → DI 와이어링 → 핸들러 라우팅)
+├── core/                 # OSS-reusable
+│   ├── types.ts          # hook event 타입, 타입 가드, skip-list
 │   ├── config.ts         # 환경변수 로드
-│   ├── client.ts         # HTTP 클라이언트 (retry 3회, timeout 5s) + buildEvent 헬퍼
-│   ├── health.ts         # 서버 헬스 관리 (3회 연속 실패 → 다운 판정)
-│   ├── cache.ts          # 규칙 캐시 (5분 TTL, 와일드카드 매칭)
+│   ├── identity.ts       # IdentityResolver 인터페이스
+│   ├── otlp.ts           # OTLP payload 빌더 + Bronze 평탄화 + ULID→traceId
+│   ├── transport.ts      # POST {endpoint}/traces (timeout 5s) + retry-queue 글루
+│   ├── retry-queue.ts    # 파일 기반 JSONL 큐 (cap 1000, 30s stale lock TTL)
 │   └── trace.ts          # traceId 관리 (ULID 생성, 파일 기반 공유)
+├── enterprise/           # Pinta 전용 (DI 시점에만 import)
+│   └── pinta-identity.ts # PintaIdentityResolver — `pinta identity id/email` 호출
 ├── handlers/
-│   ├── pre-tool-use.ts   # 헬스 체크 → 규칙 매칭 → 차단/허용
-│   ├── post-tool-use.ts  # 도구 실행 결과 전송
-│   ├── user-prompt.ts    # 새 traceId 생성 + 이벤트 전송
-│   ├── session.ts        # 세션 시작/종료 처리
-│   └── default.ts        # 기타 이벤트 전송
+│   ├── auth-message.ts   # 영문 안내 메시지 (auth 미해결 시)
+│   ├── pre-tool-use.ts   # identity 검증 → 미해결 시 deny + exit 2
+│   ├── post-tool-use.ts  # PostToolUse + PostToolUseFailure
+│   ├── user-prompt.ts    # newTrace() + 전송
+│   ├── session.ts        # SessionStart/SessionEnd
+│   ├── subagent.ts       # SubagentStart/SubagentStop
+│   ├── stop.ts           # Stop
+│   ├── permission.ts     # PermissionRequest/PermissionDenied
+│   └── default.ts        # skip-list (Notification 등) — 즉시 exit 0
 ```
 
 ### 이벤트 흐름
 
 ```
-UserPromptSubmit (새 traceId 생성)
-  → PreToolUse (규칙 체크 → 허용/차단)
-  → PostToolUse (결과 전송)
+UserPromptSubmit (새 traceId 생성 → POST /traces)
+  → PreToolUse (identity 확인 → POST /traces)
+  → PostToolUse (POST /traces)
   → PreToolUse → PostToolUse → ...
 UserPromptSubmit (다음 턴, 새 traceId)
   → ...
 ```
 
+각 hook 호출은 새 Node 프로세스로 spawn되며, 1 hook = 1 OTLP span = `resourceSpans[0].scopeSpans[0].spans[0]`.
+
 ### 캡처 이벤트 목록
 
-PreToolUse, PostToolUse, PostToolUseFailure, UserPromptSubmit, SessionStart, SessionEnd, PermissionRequest, PermissionDenied, Notification, SubagentStart, SubagentStop, Stop, TaskCreated, TaskCompleted
+PreToolUse, PostToolUse, PostToolUseFailure, UserPromptSubmit, SessionStart, SessionEnd, PermissionRequest, PermissionDenied, SubagentStart, SubagentStop, Stop. (Notification, TaskCreated, TaskCompleted는 skip-list에서 즉시 exit 0)
 
 ## 개발
 
@@ -122,25 +143,20 @@ Mock 서버 웹 UI에서 세션별, 트레이스별로 그룹핑된 이벤트를
 
 ## 서버 API
 
-Pinta가 기대하는 서버 엔드포인트:
+Pinta가 기대하는 endpoint:
 
 | Method | Path | 설명 |
 |--------|------|------|
-| `GET` | `/api/health` | 서버 헬스 체크 |
-| `GET` | `/api/rules` | 차단 규칙 목록 반환 (`{ rules, version }`) |
-| `POST` | `/api/events` | 이벤트 수신 |
+| `POST` | `/traces` | OTLP/HTTP JSON `resourceSpans` 본문, `x-api-key: <api_key>` 헤더 |
 
-### 규칙 형식
+요청 본문은 표준 OTLP traces 포맷이며, 서버는 `resourceSpans[].scopeSpans[].spans[]`를 순회해 trace 저장소에 적재한 뒤 비동기 issue detection을 수행합니다. 단일 hook 호출 = `resourceSpans` 1개 = span 1개. Retry-queue가 flush할 때는 여러 span이 단일 본문에 batched됩니다.
 
-```json
-{
-  "rules": [
-    { "id": "r1", "toolName": "Bash", "action": "block", "reason": "Bash is blocked" },
-    { "id": "r2", "toolName": "*", "action": "allow", "reason": "Default allow" }
-  ],
-  "version": "1"
-}
-```
+### Span attribute 규약
+
+- `service.name = "claude-code"`, `service.version = <Claude Code CLI 버전>`
+- `telemetry.sdk.name = "pinta-cc"`, `telemetry.sdk.version = <플러그인 버전>`
+- `member.identity.id`, `member.identity.email` — Pinta CLI가 반환한 값
+- `cc.hook = <HookEventName>`, 그 외 hook event의 모든 top-level 필드는 `cc.<key>`로 평탄화 (Bronze)
 
 ## 라이선스
 

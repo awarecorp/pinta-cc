@@ -1,11 +1,9 @@
-import type { PintaConfig } from "../core/config.js";
 import type { BaseEvent } from "../core/types.js";
-import { PintaClient, buildEvent } from "../core/client.js";
-import { TraceManager } from "../core/trace.js";
 
-export async function handleDefault(event: BaseEvent, config: PintaConfig): Promise<number> {
-  const client = new PintaClient(config);
-  const traceId = new TraceManager(config).currentTrace();
-  await client.sendEventAsync(buildEvent(event, traceId));
+/**
+ * Catch-all for hooks we explicitly skip (Notification, TaskCreated, TaskCompleted)
+ * and any future hook event we have not yet routed. Exits 0 silently.
+ */
+export async function handleDefault(_event: BaseEvent): Promise<number> {
   return 0;
 }

@@ -1,34 +1,27 @@
 import type { PintaConfig } from "../core/config.js";
 import type { SessionEvent } from "../core/types.js";
-import { PintaClient, buildEvent } from "../core/client.js";
-import { HealthManager } from "../core/health.js";
-import { RuleCacheManager } from "../core/cache.js";
+import type { IdentityResolver } from "../core/identity.js";
+import { Transport } from "../core/transport.js";
 import { TraceManager } from "../core/trace.js";
+import { buildOtlpPayload } from "../core/otlp.js";
+import { authRequiredMessage } from "./auth-message.js";
 
-export async function handleSession(event: SessionEvent, config: PintaConfig): Promise<number> {
-  const client = new PintaClient(config);
+export async function handleSession(
+  event: SessionEvent,
+  config: PintaConfig,
+  identityResolver: IdentityResolver,
+): Promise<number> {
+  const transport = new Transport(config);
+  await transport.flush();
 
-  if (event.hook_event_name === "SessionStart") {
-    const health = new HealthManager(config);
-    const isUp = await client.checkHealth();
-    if (isUp) {
-      health.recordSuccess();
-    } else {
-      health.recordFailure();
-    }
-
-    if (isUp) {
-      try {
-        const { rules, version } = await client.fetchRules();
-        const cache = new RuleCacheManager(config);
-        cache.updateRules(rules, version);
-      } catch {
-        // rule sync failure is non-fatal at session start
-      }
-    }
+  const identity = await identityResolver.resolve();
+  if (!identity) {
+    process.stderr.write(authRequiredMessage());
+    return 1;
   }
 
   const traceId = new TraceManager(config).currentTrace();
-  await client.sendEventAsync(buildEvent(event, traceId));
+  const payload = buildOtlpPayload({ event, traceId, identity });
+  await transport.send(payload);
   return 0;
 }

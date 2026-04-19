@@ -346,6 +346,47 @@ toggleAutoRefresh();
 </body>
 </html>`;
 
+// --- OTLP helpers ---
+
+function toViewerEvent(rs: any): Record<string, unknown> | null {
+  const span = rs?.scopeSpans?.[0]?.spans?.[0];
+  if (!span) return null;
+  const attrs: Record<string, unknown> = {};
+  for (const a of span.attributes ?? []) {
+    const v = a.value ?? {};
+    attrs[a.key] = v.stringValue ?? v.intValue ?? v.boolValue ?? v.doubleValue ?? null;
+  }
+  const resourceAttrs: Record<string, unknown> = {};
+  for (const a of rs.resource?.attributes ?? []) {
+    const v = a.value ?? {};
+    resourceAttrs[a.key] = v.stringValue ?? v.intValue ?? v.boolValue ?? v.doubleValue ?? null;
+  }
+  // Re-hydrate the original hook event shape under `payload` so the UI's summarize() works.
+  const payload: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(attrs)) {
+    if (!k.startsWith("cc.")) continue;
+    const key = k.slice(3);
+    // Try to JSON.parse object/array fields back so the viewer can drill in.
+    if (typeof v === "string" && (v.startsWith("{") || v.startsWith("["))) {
+      try { payload[key] = JSON.parse(v); continue; } catch { /* fall through */ }
+    }
+    payload[key] = v;
+  }
+  return {
+    eventId: span.spanId,
+    traceId: span.traceId,
+    timestamp: new Date(Number(BigInt(span.startTimeUnixNano) / 1_000_000n)).toISOString(),
+    sessionId: payload.session_id,
+    eventType: payload.hook ?? span.name,
+    toolName: payload.tool_name,
+    payload,
+    identity: {
+      id: resourceAttrs["member.identity.id"],
+      email: resourceAttrs["member.identity.email"],
+    },
+  };
+}
+
 // --- Server ---
 
 const server = http.createServer((req, res) => {
@@ -374,18 +415,18 @@ const server = http.createServer((req, res) => {
   }
 
   // Non-API requests (favicon, unknown paths) — skip auth gate
-  if (!req.url?.startsWith("/api/")) {
+  if (!req.url?.startsWith("/api/") && req.url !== "/traces") {
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not Found" }));
     return;
   }
 
-  // Plugin API - auth required
-  const auth = req.headers.authorization;
-  if (auth !== `Bearer ${API_KEY}`) {
+  // Plugin API - auth required (x-api-key)
+  const apiKey = req.headers["x-api-key"];
+  if (apiKey !== API_KEY) {
     res.writeHead(401, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Unauthorized" }));
-    log("UNAUTHORIZED", { method: req.method, url: req.url, got: auth ?? "(none)", expected: `Bearer ${API_KEY}` });
+    log("UNAUTHORIZED", { method: req.method, url: req.url, got: apiKey ?? "(none)", expected: API_KEY });
     return;
   }
 
@@ -401,6 +442,30 @@ const server = http.createServer((req, res) => {
     const body = { rules, version: "v1" };
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(body));
+    return;
+  }
+
+  // POST /traces (OTLP)
+  if (req.method === "POST" && req.url === "/traces") {
+    let data = "";
+    req.on("data", (chunk) => (data += chunk));
+    req.on("end", () => {
+      try {
+        const body = JSON.parse(data);
+        const resourceSpans: unknown[] = Array.isArray(body?.resourceSpans) ? body.resourceSpans : [];
+        for (const rs of resourceSpans) {
+          // Persist a flattened, viewer-friendly record per span so the existing UI keeps working.
+          const flat = toViewerEvent(rs);
+          if (flat) saveEvent(flat);
+        }
+        log(`TRACES batch=${resourceSpans.length}`, { count: resourceSpans.length });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ partialSuccess: {} }));
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Invalid JSON", detail: String(err) }));
+      }
+    });
     return;
   }
 
