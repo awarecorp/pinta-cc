@@ -27,13 +27,13 @@ CLI가 없거나 로그인되지 않으면 PreToolUse는 차단(deny)되고, 그
 ### GitHub에서 설치
 
 ```bash
-claude plugin install github:your-org/pinta-cc
+claude plugin install github:awarecorp/pinta-plugin
 ```
 
 ### 로컬 디렉토리로 설치
 
 ```bash
-claude --plugin-dir /path/to/pinta-cc
+claude --plugin-dir /path/to/pinta-plugin
 ```
 
 ## 설정
@@ -136,7 +136,7 @@ npm run mock-server
 4. 다른 터미널에서 Claude Code를 플러그인과 함께 실행:
 
 ```bash
-claude --plugin-dir /path/to/pinta-cc
+claude --plugin-dir /path/to/pinta-plugin
 ```
 
 Mock 서버 웹 UI에서 세션별, 트레이스별로 그룹핑된 이벤트를 확인하고, 각 이벤트 클릭 시 상세 정보(도구 입력/응답, 페이로드, Raw JSON)를 볼 수 있습니다.
