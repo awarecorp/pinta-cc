@@ -1,163 +1,165 @@
 # Pinta
 
-Claude Code 보안 모니터링 플러그인 — Claude Code hook 이벤트를 OTLP span으로 변환해 trace endpoint로 전송합니다. 정책 평가·issue detection은 서버 측에서 비동기로 수행됩니다.
+Claude Code security monitoring plugin — converts Claude Code hook events into OTLP spans and sends them to a trace endpoint. Policy evaluation and issue detection are performed asynchronously on the server side.
 
-## 주요 기능
+## Features
 
-- **OTLP 전송**: 11종 hook 이벤트를 OTLP/HTTP `resourceSpans`로 변환해 `POST {endpoint}/traces` 전송
-- **Bronze 평탄화**: hook event의 모든 top-level 필드를 `cc.<key>` 속성으로 평탄화 (서버 parser가 그대로 소비)
-- **Identity-only fail-close**: Pinta CLI identity가 해결되지 않으면 PreToolUse는 exit 2(deny), 그 외 hook은 exit 1
-- **트레이스 추적**: 사용자 턴 단위로 ULID 기반 `traceId`를 부여 (UserPromptSubmit이 새 trace 시작)
-- **재전송 큐**: 전송 실패 시 `.plugin-data/failed-spans.jsonl`에 적재(cap 1000), 다음 hook 호출이 batch flush
+- **OTLP transport**: converts 11 hook event types into OTLP/HTTP `resourceSpans` and sends them via `POST {endpoint}/traces`
+- **Bronze flattening**: every top-level field of a hook event is flattened into `cc.<key>` attributes (consumed as-is by the server parser)
+- **Identity-only fail-close**: if the Pinta CLI identity cannot be resolved, PreToolUse exits with code 2 (deny); every other hook exits with code 1
+- **Trace tracking**: a ULID-based `traceId` is assigned per user turn (`UserPromptSubmit` starts a new trace)
+- **Retry queue**: on transport failure, payloads are appended to `.plugin-data/failed-spans.jsonl` (cap 1000) and the next hook invocation flushes the batch
 
-## 인증
+## Authentication
 
-이 플러그인은 Pinta CLI를 통해 member identity를 해결합니다. 사용 전에 CLI 설치·로그인이 필요합니다:
+This plugin resolves member identity through the Pinta CLI. Install and log in before use:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/awarecorp/aware-cli/main/install.sh | sh
 pinta login
-pinta identity id     # (선택) 확인
+pinta identity id     # (optional) verify
 ```
 
-CLI가 없거나 로그인되지 않으면 PreToolUse는 차단(deny)되고, 그 외 hook은 stderr 안내 메시지 + exit 1 처리됩니다.
+If the CLI is missing or not logged in, `PreToolUse` is blocked (deny) and all other hooks print a guidance message to stderr and exit 1.
 
-## 설치
+## Installation
 
-### GitHub에서 설치
+### Install from GitHub
 
 ```bash
 claude plugin install github:awarecorp/pinta-cc
 ```
 
-### 로컬 디렉토리로 설치
+### Install from a local directory
 
 ```bash
 claude --plugin-dir /path/to/pinta-cc
 ```
 
-## 설정
+## Configuration
 
-플러그인 설치 후 Claude Code에서 설정값을 입력합니다:
+After installing the plugin, configure the following values in Claude Code:
 
-| 설정 | 설명 | 필수 |
-|------|------|------|
-| `endpoint` | 보안 서버 URL (e.g. `https://security.company.com`) | O |
-| `api_key` | 서버 API 키 | O |
+| Setting | Description | Required |
+|---------|-------------|----------|
+| `endpoint` | Security server URL (e.g. `https://security.company.com`) | Yes |
+| `api_key` | Server API key | Yes |
 
-## 아키텍처
+## Architecture
 
 ```
 src/
-├── index.ts              # 엔트리포인트 (stdin 파싱 → DI 와이어링 → 핸들러 라우팅)
+├── index.ts              # Entry point (stdin parse → DI wiring → handler routing)
 ├── core/                 # OSS-reusable
-│   ├── types.ts          # hook event 타입, 타입 가드, skip-list
-│   ├── config.ts         # 환경변수 로드
-│   ├── identity.ts       # IdentityResolver 인터페이스
-│   ├── otlp.ts           # OTLP payload 빌더 + Bronze 평탄화 + ULID→traceId
-│   ├── transport.ts      # POST {endpoint}/traces (timeout 5s) + retry-queue 글루
-│   ├── retry-queue.ts    # 파일 기반 JSONL 큐 (cap 1000, 30s stale lock TTL)
-│   └── trace.ts          # traceId 관리 (ULID 생성, 파일 기반 공유)
-├── enterprise/           # Pinta 전용 (DI 시점에만 import)
-│   └── pinta-identity.ts # PintaIdentityResolver — `pinta identity id/email` 호출
+│   ├── types.ts          # Hook event types, type guards, skip-list
+│   ├── config.ts         # Environment variable loader
+│   ├── identity.ts       # IdentityResolver interface
+│   ├── otlp.ts           # OTLP payload builder + Bronze flattening + ULID→traceId
+│   ├── transport.ts      # POST {endpoint}/traces (5s timeout) + retry-queue glue
+│   ├── retry-queue.ts    # File-based JSONL queue (cap 1000, 30s stale lock TTL)
+│   └── trace.ts          # traceId management (ULID generation, file-based sharing)
+├── enterprise/           # Pinta-specific (imported only at DI time)
+│   └── pinta-identity.ts # PintaIdentityResolver — invokes `pinta identity id/email`
 ├── handlers/
-│   ├── auth-message.ts   # 영문 안내 메시지 (auth 미해결 시)
-│   ├── pre-tool-use.ts   # identity 검증 → 미해결 시 deny + exit 2
+│   ├── auth-message.ts   # English guidance message (used when auth is unresolved)
+│   ├── pre-tool-use.ts   # Identity check → deny + exit 2 on failure
 │   ├── post-tool-use.ts  # PostToolUse + PostToolUseFailure
-│   ├── user-prompt.ts    # newTrace() + 전송
-│   ├── session.ts        # SessionStart/SessionEnd
-│   ├── subagent.ts       # SubagentStart/SubagentStop
+│   ├── user-prompt.ts    # newTrace() + transmit
+│   ├── session.ts        # SessionStart / SessionEnd
+│   ├── subagent.ts       # SubagentStart / SubagentStop
 │   ├── stop.ts           # Stop
-│   ├── permission.ts     # PermissionRequest/PermissionDenied
-│   └── default.ts        # skip-list (Notification 등) — 즉시 exit 0
+│   ├── permission.ts     # PermissionRequest / PermissionDenied
+│   └── default.ts        # skip-list (Notification, etc.) — immediate exit 0
 ```
 
-### 이벤트 흐름
+### Event flow
 
 ```
-UserPromptSubmit (새 traceId 생성 → POST /traces)
-  → PreToolUse (identity 확인 → POST /traces)
+UserPromptSubmit (generates a new traceId → POST /traces)
+  → PreToolUse (identity check → POST /traces)
   → PostToolUse (POST /traces)
   → PreToolUse → PostToolUse → ...
-UserPromptSubmit (다음 턴, 새 traceId)
+UserPromptSubmit (next turn, new traceId)
   → ...
 ```
 
-각 hook 호출은 새 Node 프로세스로 spawn되며, 1 hook = 1 OTLP span = `resourceSpans[0].scopeSpans[0].spans[0]`.
+Each hook invocation spawns a fresh Node process. One hook = one OTLP span = `resourceSpans[0].scopeSpans[0].spans[0]`.
 
-### 캡처 이벤트 목록
+### Captured events
 
-PreToolUse, PostToolUse, PostToolUseFailure, UserPromptSubmit, SessionStart, SessionEnd, PermissionRequest, PermissionDenied, SubagentStart, SubagentStop, Stop. (Notification, TaskCreated, TaskCompleted는 skip-list에서 즉시 exit 0)
+PreToolUse, PostToolUse, PostToolUseFailure, UserPromptSubmit, SessionStart, SessionEnd, PermissionRequest, PermissionDenied, SubagentStart, SubagentStop, Stop. (Notification, TaskCreated, and TaskCompleted are in the skip-list and exit 0 immediately.)
 
-## 개발
+## Development
 
-### 사전 요구사항
+### Prerequisites
 
 - Node.js 18+
 - TypeScript 5.7+
 
-### 빌드
+### Build
 
 ```bash
 npm install
 npm run build
 ```
 
-### 개발 모드
+### Watch mode
 
 ```bash
 npm run dev  # tsc --watch
 ```
 
-### Mock 서버로 테스트
+### Testing with the mock server
 
-1. 환경변수 설정 (둘 중 택일):
+1. Set environment variables (pick one):
 
 ```bash
-# 방법 A: direnv 사용 (.envrc 파일 생성 후 direnv allow)
+# Option A: use direnv (create .envrc, then direnv allow)
 echo 'export CLAUDE_PLUGIN_OPTION_ENDPOINT=http://localhost:3000
 export CLAUDE_PLUGIN_OPTION_API_KEY=test-token' > .envrc
 direnv allow
 
-# 방법 B: 인라인 환경변수
+# Option B: inline environment variables
 CLAUDE_PLUGIN_OPTION_ENDPOINT=http://localhost:3000 \
 CLAUDE_PLUGIN_OPTION_API_KEY=test-token \
 claude --plugin-dir .
 ```
 
-2. Mock 서버 실행:
+2. Run the mock server:
 
 ```bash
 npm run mock-server
 ```
 
-3. 브라우저에서 `http://localhost:3000` 접속하여 이벤트 로그 확인
+3. Open `http://localhost:3000` in a browser to inspect captured events.
 
-4. 다른 터미널에서 Claude Code를 플러그인과 함께 실행:
+4. In another terminal, run Claude Code with the plugin:
 
 ```bash
 claude --plugin-dir /path/to/pinta-cc
 ```
 
-Mock 서버 웹 UI에서 세션별, 트레이스별로 그룹핑된 이벤트를 확인하고, 각 이벤트 클릭 시 상세 정보(도구 입력/응답, 페이로드, Raw JSON)를 볼 수 있습니다.
+The mock server web UI groups events by session and trace; clicking an event shows details (tool input/response, payload, raw JSON).
 
-## 서버 API
+## Server API
 
-Pinta가 기대하는 endpoint:
+Endpoints expected by Pinta:
 
-| Method | Path | 설명 |
-|--------|------|------|
-| `POST` | `/traces` | OTLP/HTTP JSON `resourceSpans` 본문, `x-api-key: <api_key>` 헤더 |
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/traces` | OTLP/HTTP JSON `resourceSpans` body, `x-api-key: <api_key>` header |
 
-요청 본문은 표준 OTLP traces 포맷이며, 서버는 `resourceSpans[].scopeSpans[].spans[]`를 순회해 trace 저장소에 적재한 뒤 비동기 issue detection을 수행합니다. 단일 hook 호출 = `resourceSpans` 1개 = span 1개. Retry-queue가 flush할 때는 여러 span이 단일 본문에 batched됩니다.
+The request body uses the standard OTLP traces format. The server iterates `resourceSpans[].scopeSpans[].spans[]`, persists them to the trace store, and runs asynchronous issue detection. A single hook invocation equals one `resourceSpans` entry and one span; when the retry queue flushes, multiple spans are batched into a single body.
 
-### Span attribute 규약
+### Span attribute conventions
 
-- `service.name = "claude-code"`, `service.version = <Claude Code CLI 버전>`
-- `telemetry.sdk.name = "pinta-cc"`, `telemetry.sdk.version = <플러그인 버전>`
-- `member.identity.id`, `member.identity.email` — Pinta CLI가 반환한 값
-- `cc.hook = <HookEventName>`, 그 외 hook event의 모든 top-level 필드는 `cc.<key>`로 평탄화 (Bronze)
+- `service.name = "claude-code"`, `service.version = <Claude Code CLI version>`
+- `telemetry.sdk.name = "pinta-cc"`, `telemetry.sdk.version = <plugin version>`
+- `member.identity.id`, `member.identity.email` — values returned by the Pinta CLI
+- `cc.hook = <HookEventName>`; every other top-level field of the hook event is flattened into `cc.<key>` (Bronze)
 
-## 라이선스
+## License
 
-MIT
+[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — see [LICENSE](LICENSE).
+
+Commercial use is **not permitted** under this license. Noncommercial use (personal projects, research, educational institutions, nonprofits, government) is allowed. For a commercial license, please contact Pinta AI.
