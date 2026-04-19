@@ -7,9 +7,12 @@
   "plugins": [
     {
       "name": "pinta-cc",
-      "source": ".",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/awarecorp/pinta-cc.git"
+      },
       "description": "Claude Code security monitoring plugin — emits OTLP spans for hook events and fail-closes on missing Pinta identity.",
-      "homepage": "https://github.com/awarecorp/pinta-cc",
+      "homepage": "https://pinta.sh",
       "repository": "https://github.com/awarecorp/pinta-cc",
       "category": "security"
     }
