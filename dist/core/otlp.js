@@ -12,37 +12,47 @@ const fs_1 = __importDefault(require("fs"));
 const os_1 = __importDefault(require("os"));
 const path_1 = __importDefault(require("path"));
 const redact_js_1 = require("./redact.js");
-const PLUGIN_VERSION = "1.1.0"; // keep in sync with .claude-plugin/plugin.json
+const PLUGIN_VERSION = "1.1.2"; // keep in sync with .claude-plugin/plugin.json
 /**
- * Resolve the Claude Code CLI version by reading the package.json next to
- * the binary that Claude Code injects via CLAUDE_CODE_EXECPATH. The CLI sets
- * this env on every hook process. Cached at module scope (one read per hook
- * process — module is reloaded next spawn anyway).
+ * Resolve the Claude Code CLI version by walking up from the binary path
+ * (CLAUDE_CODE_EXECPATH) until we find the `@anthropic-ai/claude-code`
+ * package.json. Different install layouts (npm global, pnpm, bundled) put
+ * the binary at different depths, so we can't hard-code "..".
  *
- * Falls back to "unknown" on any error so a missing/renamed CLI does not
- * fail the hook.
+ * Cached at module scope — one read per hook process.
+ * Falls back to "unknown" on any failure so a missing CLI never fails the hook.
  */
 let cachedCliVersion = null;
 function getClaudeCodeVersion() {
     if (cachedCliVersion !== null)
         return cachedCliVersion;
-    try {
-        const execPath = process.env.CLAUDE_CODE_EXECPATH;
-        if (!execPath) {
-            cachedCliVersion = "unknown";
-            return cachedCliVersion;
-        }
-        // execPath is the binary, e.g. .../@anthropic-ai/claude-code/bin/claude.exe
-        // package.json sits two levels up from the binary: bin/<x> → package.json
-        const pkgPath = path_1.default.resolve(path_1.default.dirname(execPath), "..", "package.json");
-        const raw = fs_1.default.readFileSync(pkgPath, "utf-8");
-        const parsed = JSON.parse(raw);
-        cachedCliVersion = typeof parsed.version === "string" ? parsed.version : "unknown";
-    }
-    catch {
-        cachedCliVersion = "unknown";
-    }
+    cachedCliVersion = resolveClaudeCodeVersion() ?? "unknown";
     return cachedCliVersion;
+}
+const MAX_WALK_DEPTH = 6;
+function resolveClaudeCodeVersion() {
+    const execPath = process.env.CLAUDE_CODE_EXECPATH;
+    if (!execPath)
+        return null;
+    let dir = path_1.default.dirname(execPath);
+    const root = path_1.default.parse(dir).root;
+    for (let i = 0; i < MAX_WALK_DEPTH && dir !== root; i++) {
+        const pkgPath = path_1.default.join(dir, "package.json");
+        try {
+            const raw = fs_1.default.readFileSync(pkgPath, "utf-8");
+            const parsed = JSON.parse(raw);
+            if (typeof parsed.name === "string" &&
+                parsed.name.startsWith("@anthropic-ai/claude-code") &&
+                typeof parsed.version === "string") {
+                return parsed.version;
+            }
+        }
+        catch {
+            // keep walking
+        }
+        dir = path_1.default.dirname(dir);
+    }
+    return null;
 }
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 /**

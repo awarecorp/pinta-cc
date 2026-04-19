@@ -11,7 +11,9 @@ import {
 } from "./core/types.js";
 import type { BaseEvent } from "./core/types.js";
 import type { IdentityResolver } from "./core/identity.js";
+import type { GuardClient } from "./core/guard.js";
 import { PintaIdentityResolver } from "./enterprise/pinta-identity.js";
+import { PintaGuardClient } from "./enterprise/pinta-guard.js";
 import { handlePreToolUse } from "./handlers/pre-tool-use.js";
 import { handlePostToolUse } from "./handlers/post-tool-use.js";
 import { handleUserPrompt } from "./handlers/user-prompt.js";
@@ -32,19 +34,20 @@ async function readStdin(): Promise<string> {
 async function main(): Promise<void> {
   let exitCode = 0;
 
-  // The DI seam: this is the ONLY place we instantiate an enterprise resolver.
-  // Future OSS extraction swaps this line for `NoOpIdentityResolver`.
+  // The DI seam: this is the ONLY place we instantiate enterprise impls.
+  // Future OSS extraction swaps these for NoOp* variants.
   const identityResolver: IdentityResolver = new PintaIdentityResolver();
 
   try {
     const config = loadConfig();
+    const guardClient: GuardClient = new PintaGuardClient(config);
     const raw = await readStdin();
     const event: BaseEvent = JSON.parse(raw);
 
     if (isSkippedHook(event)) {
       exitCode = await handleDefault(event);
     } else if (isPreToolUseEvent(event)) {
-      const result = await handlePreToolUse(event, config, identityResolver);
+      const result = await handlePreToolUse(event, config, identityResolver, guardClient);
       exitCode = result.exitCode;
       if (result.output) {
         process.stdout.write(JSON.stringify(result.output));
