@@ -80,7 +80,7 @@ No new directories, no new build steps, no CI changes. Pure manifest + docs.
 
 Notes:
 - `version` deliberately omitted at the marketplace-entry level — `plugin.json` is the sole canonical version source.
-- `license` deliberately omitted until the standalone LICENSE file lands (separate follow-up). `plugin.json` already declares `"license": "MIT"`.
+- `license` deliberately omitted at the marketplace-entry level. `plugin.json` already declares `"license": "PolyForm-Noncommercial-1.0.0"` and a standalone `LICENSE` file is now in the repo root (added in commit `006f9be`).
 - `category` set to `security` for discoverability if a public catalog ever surfaces categories.
 
 ### `.claude-plugin/plugin.json` (modify)
