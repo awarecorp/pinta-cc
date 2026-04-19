@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "mock-server": "npx tsx tools/mock-server.ts"
+    "mock-server": "npx tsx tools/mock-server.ts",
+    "test:redact": "npx tsx tools/test-redact.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
