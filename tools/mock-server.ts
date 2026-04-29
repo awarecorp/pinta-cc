@@ -1,16 +1,22 @@
+/**
+ * Generic OTLP collector + HTML span viewer for local development.
+ *
+ * Usage:
+ *   npm run mock-server
+ *
+ * Endpoints:
+ *   GET  /           — span viewer UI
+ *   POST /traces     — OTLP/HTTP JSON (accepts any x-pinta-relay-token or none)
+ *   GET  /api/events/list — raw stored events (JSON array)
+ *   POST /api/events/clear — wipe stored events
+ */
 import http from "http";
 import fs from "fs";
 import path from "path";
 
 const PORT = 3000;
-const API_KEY = "test-token";
 const DATA_DIR = path.join(__dirname, ".data");
 const EVENTS_FILE = path.join(DATA_DIR, "events.json");
-
-// 차단 룰 설정 (테스트용으로 수정 가능)
-const rules: Array<{ id: string; action: string; toolName: string; reason: string }> = [
-  // { id: "r1", action: "block", toolName: "Bash", reason: "Bash 사용이 차단되었습니다" },
-];
 
 // --- Storage ---
 
@@ -38,11 +44,11 @@ function log(label: string, data: unknown) {
 // --- HTML UI ---
 
 const HTML = `<!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pinta - Event Viewer</title>
+<title>pinta-cc — OTLP Span Viewer</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; }
@@ -96,7 +102,6 @@ const HTML = `<!DOCTYPE html>
   .event-type.UserPromptSubmit { color: #bc8cff; }
   .event-type.SessionStart { color: #58a6ff; }
   .event-type.SessionEnd { color: #8b949e; }
-  .event-type.blocked { color: #f85149; }
   .event-detail { color: #8b949e; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .event-time { color: #484f58; font-size: 12px; flex-shrink: 0; }
   .empty { text-align: center; padding: 60px; color: #484f58; }
@@ -105,7 +110,7 @@ const HTML = `<!DOCTYPE html>
 <body>
 <div class="layout">
 <div class="list-pane">
-  <h1>Pinta Event Viewer</h1>
+  <h1>pinta-cc Span Viewer</h1>
   <div class="toolbar">
     <button onclick="refresh()">Refresh</button>
     <button onclick="clearEvents()">Clear</button>
@@ -124,7 +129,7 @@ const HTML = `<!DOCTYPE html>
 </div>
 <div class="detail-pane" id="detailPane">
   <div class="detail-header">
-    <h3 id="detailTitle">Event Detail</h3>
+    <h3 id="detailTitle">Span Detail</h3>
     <button class="detail-close" onclick="closeDetail()">&times;</button>
   </div>
   <div class="detail-tabs">
@@ -164,12 +169,12 @@ function toggleAutoRefresh() {
 
 function formatTime(ts) {
   const d = new Date(ts);
-  return d.toLocaleTimeString('ko-KR', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+  return d.toLocaleTimeString('en-US', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
 }
 
 function formatFullTime(ts) {
   const d = new Date(ts);
-  return d.toLocaleDateString('ko-KR') + ' ' + d.toLocaleTimeString('ko-KR', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+  return d.toLocaleDateString('en-US') + ' ' + d.toLocaleTimeString('en-US', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
 }
 
 function escapeHtml(s) {
@@ -221,10 +226,10 @@ function showDetail(idx) {
   const p = ev.payload || {};
 
   if (currentTab === 'overview') {
-    let html = '<div class="detail-section"><h4>Event Info</h4>';
+    let html = '<div class="detail-section"><h4>Span Info</h4>';
     html += row('Type', '<span class="detail-value type ' + ev.eventType + '">' + ev.eventType + '</span>');
     html += row('Time', formatFullTime(ev.timestamp));
-    html += row('Event ID', ev.eventId);
+    html += row('Span ID', ev.eventId);
     html += row('Trace ID', ev.traceId || '-');
     html += row('Session ID', ev.sessionId);
     if (ev.toolName) html += row('Tool', ev.toolName);
@@ -233,7 +238,6 @@ function showDetail(idx) {
     html += row('Permission', p.permission_mode || '-');
     html += '</div>';
 
-    // Context-specific sections
     if (ev.eventType === 'UserPromptSubmit' && p.prompt) {
       html += '<div class="detail-section"><h4>User Prompt</h4>';
       html += '<div class="detail-prompt">' + escapeHtml(p.prompt) + '</div></div>';
@@ -254,7 +258,7 @@ function showDetail(idx) {
   } else if (currentTab === 'payload') {
     body.innerHTML = '<div class="detail-section"><h4>Payload</h4><div class="detail-json"><pre>' + escapeHtml(JSON.stringify(p, null, 2)) + '</pre></div></div>';
   } else {
-    body.innerHTML = '<div class="detail-section"><h4>Full Event</h4><div class="detail-json"><pre>' + escapeHtml(JSON.stringify(ev, null, 2)) + '</pre></div></div>';
+    body.innerHTML = '<div class="detail-section"><h4>Full Span</h4><div class="detail-json"><pre>' + escapeHtml(JSON.stringify(ev, null, 2)) + '</pre></div></div>';
   }
 }
 
@@ -277,7 +281,7 @@ async function refresh() {
   const filter = document.getElementById('filter').value;
   const filtered = filter ? events.filter(e => e.eventType === filter) : events;
 
-  document.getElementById('stats').textContent = filtered.length + ' events';
+  document.getElementById('stats').textContent = filtered.length + ' spans';
 
   const sessions = new Map();
   for (const ev of filtered) {
@@ -290,7 +294,7 @@ async function refresh() {
   }
 
   if (filtered.length === 0) {
-    document.getElementById('app').innerHTML = '<div class="empty">No events yet. Start using Claude Code with the Pinta plugin.</div>';
+    document.getElementById('app').innerHTML = '<div class="empty">No spans yet. Start using Claude Code with the pinta-cc plugin.</div>';
     return;
   }
 
@@ -311,7 +315,7 @@ async function refresh() {
       html += '<div class="trace-header" onclick="toggleTrace(\\'' + escapeHtml(tid).replace(/'/g, "\\\\'") + '\\')">';
       html += '<span class="arrow' + (isOpen ? ' open' : '') + '">&#9654;</span>';
       html += '<strong>' + escapeHtml(promptPreview) + '</strong>';
-      html += '<span style="color:#484f58;font-size:12px">' + evCount + ' events</span>';
+      html += '<span style="color:#484f58;font-size:12px">' + evCount + ' spans</span>';
       html += '<span class="time">' + firstTime + '</span>';
       html += '</div>';
       html += '<div style="display:' + (isOpen ? 'block' : 'none') + '">';
@@ -352,11 +356,6 @@ function toViewerEvent(rs: any): Record<string, unknown> | null {
     const v = a.value ?? {};
     attrs[a.key] = v.stringValue ?? v.intValue ?? v.boolValue ?? v.doubleValue ?? null;
   }
-  const resourceAttrs: Record<string, unknown> = {};
-  for (const a of rs.resource?.attributes ?? []) {
-    const v = a.value ?? {};
-    resourceAttrs[a.key] = v.stringValue ?? v.intValue ?? v.boolValue ?? v.doubleValue ?? null;
-  }
   // Re-hydrate the original hook event shape under `payload` so the UI's summarize() works.
   const payload: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(attrs)) {
@@ -364,7 +363,12 @@ function toViewerEvent(rs: any): Record<string, unknown> | null {
     const key = k.slice(3);
     // Try to JSON.parse object/array fields back so the viewer can drill in.
     if (typeof v === "string" && (v.startsWith("{") || v.startsWith("["))) {
-      try { payload[key] = JSON.parse(v); continue; } catch { /* fall through */ }
+      try {
+        payload[key] = JSON.parse(v);
+        continue;
+      } catch {
+        /* fall through */
+      }
     }
     payload[key] = v;
   }
@@ -376,31 +380,27 @@ function toViewerEvent(rs: any): Record<string, unknown> | null {
     eventType: payload.hook ?? span.name,
     toolName: payload.tool_name,
     payload,
-    identity: {
-      id: resourceAttrs["member.identity.id"],
-      email: resourceAttrs["member.identity.email"],
-    },
   };
 }
 
 // --- Server ---
 
 const server = http.createServer((req, res) => {
-  // UI - no auth required
+  // UI
   if (req.method === "GET" && (req.url === "/" || req.url === "/ui")) {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(HTML);
     return;
   }
 
-  // Events list API - no auth required (dev tool)
+  // Events list API
   if (req.method === "GET" && req.url === "/api/events/list") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(loadEvents()));
     return;
   }
 
-  // Clear events - no auth required (dev tool)
+  // Clear events
   if (req.method === "POST" && req.url === "/api/events/clear") {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(EVENTS_FILE, "[]");
@@ -410,47 +410,17 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Non-API requests (favicon, unknown paths) — skip auth gate
-  if (!req.url?.startsWith("/api/") && req.url !== "/traces") {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Not Found" }));
-    return;
-  }
-
-  // Plugin API - auth required (x-api-key)
-  const apiKey = req.headers["x-api-key"];
-  if (apiKey !== API_KEY) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Unauthorized" }));
-    log("UNAUTHORIZED", { method: req.method, url: req.url, got: apiKey ?? "(none)", expected: API_KEY });
-    return;
-  }
-
-  // GET /api/health
-  if (req.method === "GET" && req.url === "/api/health") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok" }));
-    return;
-  }
-
-  // GET /api/rules
-  if (req.method === "GET" && req.url === "/api/rules") {
-    const body = { rules, version: "v1" };
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(body));
-    return;
-  }
-
-  // POST /traces (OTLP)
+  // POST /traces (OTLP/HTTP)
   if (req.method === "POST" && req.url === "/traces") {
     let data = "";
     req.on("data", (chunk) => (data += chunk));
     req.on("end", () => {
       try {
         const body = JSON.parse(data);
-        const resourceSpans: unknown[] = Array.isArray(body?.resourceSpans) ? body.resourceSpans : [];
+        const resourceSpans: unknown[] = Array.isArray(body?.resourceSpans)
+          ? body.resourceSpans
+          : [];
         for (const rs of resourceSpans) {
-          // Persist a flattened, viewer-friendly record per span so the existing UI keeps working.
           const flat = toViewerEvent(rs);
           if (flat) saveEvent(flat);
         }
@@ -465,36 +435,15 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // POST /api/events
-  if (req.method === "POST" && req.url === "/api/events") {
-    let data = "";
-    req.on("data", (chunk) => (data += chunk));
-    req.on("end", () => {
-      try {
-        const event = JSON.parse(data);
-        saveEvent(event);
-        log(`EVENT [${event.eventType}]${event.toolName ? ` tool=${event.toolName}` : ""}`, { traceId: event.traceId, toolName: event.toolName });
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ received: true }));
-      } catch {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Invalid JSON" }));
-      }
-    });
-    return;
-  }
-
-  res.writeHead(404);
-  res.end();
+  res.writeHead(404, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "Not Found" }));
 });
 
 server.listen(PORT, () => {
-  console.log(`\n🔒 Pinta Mock Server running on http://localhost:${PORT}`);
-  console.log(`   Token: ${API_KEY}`);
-  console.log(`   Rules: ${rules.length} rules loaded`);
-  console.log(`\n   UI:        http://localhost:${PORT}/`);
-  console.log(`   Events:    http://localhost:${PORT}/api/events/list`);
-  console.log(`   Health:    http://localhost:${PORT}/api/health`);
-  console.log(`   Rules:     http://localhost:${PORT}/api/rules`);
-  console.log(`\n   Waiting for events...\n`);
+  console.log(`\npinta-cc Mock OTLP Server running on http://localhost:${PORT}`);
+  console.log(`\n  POST /traces        — OTLP/HTTP spans`);
+  console.log(`  GET  /              — span viewer UI`);
+  console.log(`  GET  /api/events/list`);
+  console.log(`  POST /api/events/clear`);
+  console.log(`\n  Waiting for spans...\n`);
 });

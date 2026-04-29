@@ -1,3 +1,4 @@
+import { bridgeUserConfigToOtelEnv } from "./core/env-bridge.js";
 import { loadConfig } from "./core/config.js";
 import {
   isPreToolUseEvent,
@@ -10,10 +11,6 @@ import {
   isSkippedHook,
 } from "./core/types.js";
 import type { BaseEvent } from "./core/types.js";
-import type { IdentityResolver } from "./core/identity.js";
-import type { GuardClient } from "./core/guard.js";
-import { PintaIdentityResolver } from "./enterprise/pinta-identity.js";
-import { PintaGuardClient } from "./enterprise/pinta-guard.js";
 import { handlePreToolUse } from "./handlers/pre-tool-use.js";
 import { handlePostToolUse } from "./handlers/post-tool-use.js";
 import { handleUserPrompt } from "./handlers/user-prompt.js";
@@ -32,38 +29,33 @@ async function readStdin(): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  let exitCode = 0;
+  // Bridge CLAUDE_PLUGIN_OPTION_* → OTEL_EXPORTER_OTLP_* FIRST before any other logic.
+  // Explicit OTel env vars take precedence over the bridge.
+  bridgeUserConfigToOtelEnv();
 
-  // The DI seam: this is the ONLY place we instantiate enterprise impls.
-  // Future OSS extraction swaps these for NoOp* variants.
-  const identityResolver: IdentityResolver = new PintaIdentityResolver();
+  let exitCode = 0;
 
   try {
     const config = loadConfig();
-    const guardClient: GuardClient = new PintaGuardClient(config);
     const raw = await readStdin();
     const event: BaseEvent = JSON.parse(raw);
 
     if (isSkippedHook(event)) {
       exitCode = await handleDefault(event);
     } else if (isPreToolUseEvent(event)) {
-      const result = await handlePreToolUse(event, config, identityResolver, guardClient);
-      exitCode = result.exitCode;
-      if (result.output) {
-        process.stdout.write(JSON.stringify(result.output));
-      }
+      exitCode = await handlePreToolUse(event, config);
     } else if (isPostToolUseEvent(event)) {
-      exitCode = await handlePostToolUse(event, config, identityResolver);
+      exitCode = await handlePostToolUse(event, config);
     } else if (isUserPromptSubmitEvent(event)) {
-      exitCode = await handleUserPrompt(event, config, identityResolver);
+      exitCode = await handleUserPrompt(event, config);
     } else if (isSessionEvent(event)) {
-      exitCode = await handleSession(event, config, identityResolver);
+      exitCode = await handleSession(event, config);
     } else if (isSubagentEvent(event)) {
-      exitCode = await handleSubagent(event, config, identityResolver);
+      exitCode = await handleSubagent(event, config);
     } else if (isStopEvent(event)) {
-      exitCode = await handleStop(event, config, identityResolver);
+      exitCode = await handleStop(event, config);
     } else if (isPermissionEvent(event)) {
-      exitCode = await handlePermission(event, config, identityResolver);
+      exitCode = await handlePermission(event, config);
     } else {
       exitCode = await handleDefault(event);
     }

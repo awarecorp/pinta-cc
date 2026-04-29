@@ -1,70 +1,97 @@
-import type { PintaConfig } from "./config.js";
+import { RetryQueue } from "./retry-queue.js";
 import type { OtlpPayload } from "./otlp.js";
 import { mergeBatch } from "./otlp.js";
-import { RetryQueue } from "./retry-queue.js";
+import type { PintaConfig } from "./config.js";
 
 const TIMEOUT_MS = 5000;
 
+interface TransportOptions {
+  endpoint: string;
+  headers: Record<string, string>;
+}
+
+function parseHeadersEnv(raw: string | undefined): Record<string, string> {
+  if (!raw) return {};
+  const out: Record<string, string> = {};
+  for (const pair of raw.split(",")) {
+    const [k, ...rest] = pair.split("=");
+    if (k && rest.length > 0) out[k.trim()] = rest.join("=").trim();
+  }
+  return out;
+}
+
+function getOptions(): TransportOptions | null {
+  const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+  if (!endpoint) return null;
+  return {
+    endpoint: endpoint.replace(/\/+$/, ""),
+    headers: parseHeadersEnv(process.env.OTEL_EXPORTER_OTLP_HEADERS),
+  };
+}
+
 export class Transport {
-  private config: PintaConfig;
   private queue: RetryQueue;
 
   constructor(config: PintaConfig) {
-    this.config = config;
     this.queue = new RetryQueue(config.pluginData);
   }
 
   /**
    * POST a single payload. On any failure, enqueue it for the next hook to retry.
-   * Never throws — handlers must always reach exit 0/1/2 deterministically.
+   * Silent disable when no endpoint is configured.
    */
   async send(payload: OtlpPayload): Promise<void> {
-    const ok = await this.post(payload);
+    const opts = getOptions();
+    if (!opts) return; // Silent disable when no endpoint configured
+    const ok = await this.post(payload, opts);
     if (!ok) this.queue.enqueue(payload);
   }
 
   /**
    * Best-effort drain. Acquires the lock, reads the queue, attempts a single
-   * batched POST. On failure, leaves the queue untouched. Lock-acquire failure
-   * is silent — the next hook will try.
+   * batched POST. On failure, leaves the queue untouched.
+   * Silent disable when no endpoint is configured.
    */
   async flush(): Promise<void> {
+    const opts = getOptions();
+    if (!opts) return;
     if (!this.queue.tryAcquireLock()) return;
     try {
       const entries = this.queue.readAll();
       if (entries.length === 0) return;
       const merged = mergeBatch(entries.map((e) => e.payload));
-      const ok = await this.post(merged);
+      const ok = await this.post(merged, opts);
       if (ok) this.queue.rewrite([]);
     } finally {
       this.queue.release();
     }
   }
 
-  private async post(payload: OtlpPayload): Promise<boolean> {
-    const url = `${this.config.endpoint}/traces`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  private async post(payload: OtlpPayload, opts: TransportOptions): Promise<boolean> {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
-      const res = await fetch(url, {
+      const res = await fetch(`${opts.endpoint}/traces`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": this.config.apiKey,
+          ...opts.headers,
         },
         body: JSON.stringify(payload),
-        signal: controller.signal,
+        signal: ctrl.signal,
       });
       if (!res.ok) {
-        process.stderr.write(`[pinta-cc] POST /traces failed: HTTP ${res.status}\n`);
+        process.stderr.write(`[pinta-cc] OTLP POST ${res.status}\n`);
         return false;
       }
       return true;
     } catch (err) {
-      process.stderr.write(`[pinta-cc] POST /traces failed: ${err}\n`);
+      process.stderr.write(
+        `[pinta-cc] OTLP POST failed: ${(err as Error).message ?? String(err)}\n`,
+      );
       return false;
     } finally {
-      clearTimeout(timeout);
+      clearTimeout(timer);
     }
   }
 }

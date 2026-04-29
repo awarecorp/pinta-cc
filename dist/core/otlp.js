@@ -12,7 +12,7 @@ const fs_1 = __importDefault(require("fs"));
 const os_1 = __importDefault(require("os"));
 const path_1 = __importDefault(require("path"));
 const redact_js_1 = require("./redact.js");
-const PLUGIN_VERSION = "1.1.2"; // keep in sync with .claude-plugin/plugin.json
+const PLUGIN_VERSION = "1.2.0"; // keep in sync with .claude-plugin/plugin.json
 /**
  * Resolve the Claude Code CLI version by walking up from the binary path
  * (CLAUDE_CODE_EXECPATH) until we find the `@anthropic-ai/claude-code`
@@ -161,15 +161,13 @@ function flattenEvent(event) {
     }
     return out;
 }
-function resourceAttrs(identity) {
+function resourceAttrs() {
     return [
         { key: "service.name", value: { stringValue: "claude-code" } },
         { key: "service.version", value: { stringValue: getClaudeCodeVersion() } },
         { key: "telemetry.sdk.name", value: { stringValue: "pinta-cc" } },
         { key: "telemetry.sdk.language", value: { stringValue: "nodejs" } },
         { key: "telemetry.sdk.version", value: { stringValue: PLUGIN_VERSION } },
-        { key: "member.identity.id", value: { stringValue: identity.id } },
-        { key: "member.identity.email", value: { stringValue: identity.email } },
         { key: "process.pid", value: { intValue: process.pid } },
         { key: "process.owner", value: { stringValue: os_1.default.userInfo().username } },
         { key: "host.name", value: { stringValue: os_1.default.hostname() } },
@@ -191,7 +189,7 @@ function buildOtlpPayload(args) {
     return {
         resourceSpans: [
             {
-                resource: { attributes: resourceAttrs(args.identity) },
+                resource: { attributes: resourceAttrs() },
                 scopeSpans: [
                     {
                         scope: { name: "pinta-cc", version: PLUGIN_VERSION },

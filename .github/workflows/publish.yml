@@ -1,0 +1,68 @@
+name: Publish to npm
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - run: npm install -g npm@latest
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Check version
+        id: check-version
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          LOCAL_VERSION=$(node -p "require('./package.json').version")
+          REMOTE_VERSION=$(npm view "$PACKAGE_NAME" version 2>/dev/null || echo "0.0.0")
+          echo "version=$LOCAL_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$LOCAL_VERSION" != "$REMOTE_VERSION" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish
+        if: steps.check-version.outputs.skip == 'false'
+        run: npm publish --access public
+
+      - name: Notify Slack
+        if: always()
+        env:
+          WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          VERSION: ${{ steps.check-version.outputs.version }}
+          SKIP: ${{ steps.check-version.outputs.skip }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not set; skipping notification" && exit 0
+          fi
+          STATUS_TEXT="Success"
+          COLOR="#36a64f"
+          if [ "$JOB_STATUS" != "success" ]; then
+            STATUS_TEXT="Failure"
+            COLOR="#e01e5a"
+          fi
+          PUBLISH_STATE="published"
+          if [ "$SKIP" = "true" ]; then
+            PUBLISH_STATE="skipped (version unchanged)"
+          fi
+          payload=$(printf '%s' '{"attachments":[{"color":"'"$COLOR"'","title":"@pinta-ai/pinta-cc publish","text":"'"$STATUS_TEXT"' - publish '"$PUBLISH_STATE"'","fields":[{"title":"Version","value":"'"$VERSION"'","short":true},{"title":"Install","value":"npm install @pinta-ai/pinta-cc@'"$VERSION"'","short":false},{"title":"Run","value":"'"$WORKFLOW_URL"'","short":false}]}]}')
+          curl -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL"

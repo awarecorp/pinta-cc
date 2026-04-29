@@ -1,16 +1,37 @@
 {
-  "name": "pinta",
-  "version": "1.0.0",
-  "description": "Claude Code security monitoring plugin",
+  "name": "@pinta-ai/pinta-cc",
+  "version": "1.2.0",
+  "description": "Generic OTLP forwarder for Claude Code hook events",
   "main": "dist/index.js",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "files": [
+    "dist",
+    ".claude-plugin",
+    "hooks",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/awarecorp/pinta-cc.git"
+  },
+  "homepage": "https://github.com/awarecorp/pinta-cc#readme",
+  "bugs": {
+    "url": "https://github.com/awarecorp/pinta-cc/issues"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "mock-server": "npx tsx tools/mock-server.ts",
-    "test:redact": "npx tsx tools/test-redact.ts"
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.7.0"
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
   }
 }

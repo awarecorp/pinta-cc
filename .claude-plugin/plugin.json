@@ -1,18 +1,18 @@
 {
   "name": "pinta-cc",
-  "description": "Security monitoring plugin - captures all Claude Code events and enforces server-managed access rules",
-  "version": "1.1.2",
+  "description": "Generic OTLP forwarder for Claude Code hook events. Converts hook events into OTLP/HTTP spans and sends them to any OpenTelemetry-compatible collector.",
+  "version": "1.2.0",
   "license": "PolyForm-Noncommercial-1.0.0",
   "userConfig": {
     "endpoint": {
-      "title": "Endpoint",
-      "description": "Security server URL (e.g. https://security.company.com)",
+      "title": "OTLP endpoint",
+      "description": "OTLP/HTTP traces endpoint. Pinta Manager auto-fills this. OSS users: any OTel collector.",
       "type": "string",
       "sensitive": false
     },
     "api_key": {
-      "title": "API Key",
-      "description": "Server API key",
+      "title": "OTLP authentication",
+      "description": "Token sent as x-pinta-relay-token header. Pinta Manager auto-fills.",
       "type": "string",
       "sensitive": true
     }

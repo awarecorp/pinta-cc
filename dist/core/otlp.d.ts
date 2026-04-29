@@ -1,4 +1,3 @@
-import type { Identity } from "./identity.js";
 import type { BaseEvent } from "./types.js";
 export interface OtlpAttribute {
     key: string;
@@ -48,7 +47,6 @@ export declare function newSpanId(): string;
 export declare function buildOtlpPayload(args: {
     event: BaseEvent;
     traceId: string;
-    identity: Identity;
     now?: number;
 }): OtlpPayload;
 /**
