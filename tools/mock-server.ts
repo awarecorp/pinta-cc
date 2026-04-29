@@ -141,6 +141,7 @@ let autoRefreshTimer = null;
 let allEvents = [];
 let selectedEventId = null;
 let currentTab = 'overview';
+let openTraceIds = new Set();
 
 async function fetchEvents() {
   const res = await fetch('/api/events/list');
@@ -261,16 +262,13 @@ function row(label, value) {
   return '<div class="detail-row"><span class="detail-label">' + label + '</span><span class="detail-value">' + value + '</span></div>';
 }
 
-function toggleTrace(id) {
-  const el = document.getElementById('trace-body-' + id);
-  const arrow = document.getElementById('arrow-' + id);
-  if (el.style.display === 'none') {
-    el.style.display = 'block';
-    arrow.classList.add('open');
+function toggleTrace(tid) {
+  if (openTraceIds.has(tid)) {
+    openTraceIds.delete(tid);
   } else {
-    el.style.display = 'none';
-    arrow.classList.remove('open');
+    openTraceIds.add(tid);
   }
+  refresh();
 }
 
 async function refresh() {
@@ -297,7 +295,6 @@ async function refresh() {
   }
 
   let html = '';
-  let traceNum = 0;
   const sessionEntries = [...sessions.entries()].reverse();
   for (const [sid, traces] of sessionEntries) {
     html += '<div class="session">';
@@ -305,20 +302,19 @@ async function refresh() {
 
     const traceEntries = [...traces.entries()].reverse();
     for (const [tid, tevents] of traceEntries) {
-      const traceIdx = traceNum++;
+      const isOpen = openTraceIds.has(tid);
       const firstTime = tevents[0]?.timestamp ? formatTime(tevents[0].timestamp) : '';
       const evCount = tevents.length;
       const hasPrompt = tevents.find(e => e.eventType === 'UserPromptSubmit');
       const promptPreview = hasPrompt ? summarize(hasPrompt).slice(0, 60) : tid.slice(0, 12);
-
       html += '<div class="trace">';
-      html += '<div class="trace-header" onclick="toggleTrace(' + traceIdx + ')">';
-      html += '<span class="arrow" id="arrow-' + traceIdx + '">&#9654;</span>';
+      html += '<div class="trace-header" onclick="toggleTrace(\\'' + escapeHtml(tid).replace(/'/g, "\\\\'") + '\\')">';
+      html += '<span class="arrow' + (isOpen ? ' open' : '') + '">&#9654;</span>';
       html += '<strong>' + escapeHtml(promptPreview) + '</strong>';
       html += '<span style="color:#484f58;font-size:12px">' + evCount + ' events</span>';
       html += '<span class="time">' + firstTime + '</span>';
       html += '</div>';
-      html += '<div id="trace-body-' + traceIdx + '" style="display:none">';
+      html += '<div style="display:' + (isOpen ? 'block' : 'none') + '">';
 
       for (const ev of tevents) {
         const globalIdx = ev._idx;
