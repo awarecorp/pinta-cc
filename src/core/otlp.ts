@@ -35,7 +35,7 @@ function processOwner(): string {
   return cachedProcessOwner;
 }
 
-const PLUGIN_VERSION = "1.6.0"; // keep in sync with .claude-plugin/plugin.json
+const PLUGIN_VERSION = "1.6.1"; // keep in sync with .claude-plugin/plugin.json
 
 /**
  * Resolve the Claude Code CLI version by walking up from the binary path
