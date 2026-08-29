@@ -103,3 +103,35 @@ describe("handlePreToolUse — security decision vs. telemetry ordering", () => 
     expect(vi.mocked(emitEvent)).toHaveBeenCalledOnce();
   });
 });
+
+/**
+ * The hook payload carries more than the guard was being told.
+ *
+ * `cwd` locates a relative target — `rm -rf passwd` reads as routine work
+ * until you know it was issued from /etc — and `hook_event_name` is what lets
+ * the manager trust `tool_name` at all, since Claude Code owns those names and
+ * an MCP server does not. Both were on `event` and neither was forwarded, so
+ * the guard judged with less than the adapter knew (PTA-176 · PTA-207).
+ */
+describe("handlePreToolUse — what the guard is told about the invocation", () => {
+  beforeEach(() => {
+    vi.mocked(emitEvent).mockReset();
+    vi.mocked(evaluateGuard).mockReset();
+    vi.mocked(evaluateGuard).mockResolvedValue({
+      decision: "ALLOW",
+      reason: null,
+      userMessage: null,
+    } as never);
+  });
+
+  it("forwards the working directory and the hook event", async () => {
+    await handlePreToolUse(
+      { ...event, cwd: "/etc" } as PreToolUseEvent,
+      config,
+    );
+    expect(vi.mocked(evaluateGuard).mock.calls[0]?.[0]).toMatchObject({
+      cwd: "/etc",
+      method: "PreToolUse",
+    });
+  });
+});
