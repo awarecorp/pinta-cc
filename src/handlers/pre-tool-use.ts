@@ -11,10 +11,21 @@ export async function handlePreToolUse(
     typeof event.tool_input === "string"
       ? event.tool_input
       : JSON.stringify(event.tool_input);
+  // `cwd` and `hook_event_name` are on every hook payload and were being
+  // dropped here. Both change what the guard can conclude:
+  //
+  // - `cwd` locates a relative target. `rm -rf passwd` reads as routine work
+  //   until you know it was issued from /etc (PTA-176).
+  // - `hook_event_name` is what lets the manager trust `tool_name`. Claude Code
+  //   owns these names; an MCP server does not, so without the event a tool
+  //   called `Read` is taken at its word and its arguments are treated as
+  //   content rather than as a command (PTA-207).
   const guard = await evaluateGuard(
     {
       spanId: event.session_id ?? "unknown",
       toolName: event.tool_name,
+      method: event.hook_event_name,
+      cwd: event.cwd,
       toolInput: event.tool_input,
       rawTextFields: { toolInput: rawToolInput },
     },
